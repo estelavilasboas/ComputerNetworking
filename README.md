@@ -1,3 +1,3 @@
 # ComputerNetworking
 
-gcc <filename>.c -lpthread
+gcc < filename >.c -lpthread
