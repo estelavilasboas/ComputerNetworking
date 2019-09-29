@@ -7,11 +7,13 @@
 #include <time.h>         //time
 #include "dijkstra.c"
 
-//arrumar SERVER, BufferMaxLength
+#define MaxNumberNodes 15
+
 typedef struct{
   int id;
   char IP[15];
   int port;
+  int *nextNodes;
 }Node;
 
 typedef struct{
@@ -26,7 +28,6 @@ typedef struct{
   char data[100];
 }Message;
 
-//#define BufferMaxLength 512
 Node newNode;
 NodeList nodeList;
 
@@ -37,7 +38,8 @@ void die(char *s){
 
 void *socketSend(void *data){
   int messageId=1, port=-1;
-  //Instanciando socket para a thread
+
+  // Set socket for thread
   struct sockaddr_in newSocket;
   int s, socketLength = sizeof(newSocket);
   
@@ -45,9 +47,11 @@ void *socketSend(void *data){
     Message *buffer = (Message *)malloc(sizeof(Message));
     Message *msg = (Message *)malloc(sizeof(Message));
 
+    // Get destination node
     printf("\nSend a message to id: ");
     scanf("%d", &msg->destId);
 
+    // Search port
     for(int i = 0; i!=nodeList.len; i++){
       if(nodeList.nodes[i].id == msg->destId)
         port = nodeList.nodes[i].port;
@@ -62,7 +66,7 @@ void *socketSend(void *data){
     if( (s=socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP)) == -1 )
       die("socket");
 
-    //Inicializa - zero out the struture
+    // Inicializa - zero out the struture
     memset((char *) &newSocket, 0, sizeof(newSocket));
     newSocket.sin_family = AF_INET;
     newSocket.sin_port = htons(port);
@@ -72,24 +76,25 @@ void *socketSend(void *data){
       exit(1);
     }
 
+    // Get and prepare the message
     printf("Enter message : ");
     scanf("%s", msg->data);
     msg->sourceId = newNode.id;
     msg->id = messageId;
 
-    //send the message
+    // Send the message
     if(sendto(s, msg, sizeof(Message), 0, (struct sockaddr *) &newSocket, socketLength) == -1)
       die("sendto()");
 
-    //receive a reply and print it.
-    //clear the buffer by filling null,
-    //it might have previously received data
+    // Clear the buffer by filling null, it might have received data
     memset(buffer, '\0', sizeof(Message));
-    //try to receive some data, this is a blocking call
+
+    // Try to receive a reply
     if (recvfrom(s, buffer, sizeof(Message), 0, (struct sockaddr *) &newSocket, &socketLength) == -1)
       die("recvfrom()");
 
     messageId++;
+    // Print reply
     printf("\n\t~ %s%d ~\n", buffer->data, buffer->sourceId);
     //puts(buffer);
   }
@@ -102,7 +107,7 @@ void *socketReceive(void *data){
   struct sockaddr_in newSocket, otherSocket;
   int s, socketLength = sizeof(newSocket), receiveLength;
 
-  //create a UDP socket
+  // Create a UDP socket
   if ((s=socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP)) == -1)
       die("socket");
 
@@ -112,7 +117,7 @@ void *socketReceive(void *data){
   newSocket.sin_port = htons(newNode.port);
   newSocket.sin_addr.s_addr = htonl(INADDR_ANY);
 
-  //bind socket to port
+  // Bind socket to port
   if( bind(s, (struct sockaddr*)&newSocket, sizeof(newSocket)) == -1)
     die("bind");
   
@@ -125,14 +130,17 @@ void *socketReceive(void *data){
     if((receiveLength = recvfrom(s, buffer, sizeof(Message), 0, (struct sockaddr *) &otherSocket, &socketLength)) == -1)
       die("recvfrom()");
 
+    // Check if the received message is for this node
     if(buffer->destId == newNode.id){
       printf("\n\n\t~ Received message %d from node %d ~\n", buffer->id, buffer->sourceId);
-      printf("\t\tData: %s\n", buffer->data);
+      printf("\t    Data: %s\n", buffer->data);
 
+      // Prepare the confirmation message
       buffer->destId = buffer->sourceId;
       buffer->sourceId = newNode.id;
       strcpy(buffer->data, "Confirmation: Message was received by node ");
 
+      // Send the confirmation message to the source
       if(sendto(s, buffer, sizeof(Message), 0, (struct sockaddr*) &otherSocket, socketLength) == -1)
         die("sendto()");
 
@@ -150,6 +158,9 @@ void *socketReceive(void *data){
 
 void readFile(){
   FILE *file;
+
+  printf("Who am I? ");
+  scanf("%d", &newNode.id);
   printf("Searching my IP...\n");
 
   if(( file = fopen("roteadores.config", "r")) == NULL){
@@ -161,11 +172,13 @@ void readFile(){
   char IP[15];
   nodeList.len = 0;
 
+  // Reading the file and saving nodes data.
   while(fscanf(file, "%d %d %s", &id, &port, IP) != EOF ){
     int i = nodeList.len++;
     nodeList.nodes[i].id = id;
     strcpy(nodeList.nodes[i].IP, IP);
     nodeList.nodes[i].port = port;
+    nodeList.nodes[i].nextNodes = NULL;
   
     if(id == newNode.id){
       strcpy(newNode.IP, IP);
@@ -184,6 +197,7 @@ void readFile(){
 
 void readLinksFile(){
   FILE *file;
+  newNode.nextNodes = malloc(sizeof(Message)*MaxNumberNodes);
 
   if(( file = fopen("enlaces.config", "r")) == NULL){
     printf("\n\t~ enlaces.config: File could not be opened :( ~\n");
@@ -191,26 +205,27 @@ void readLinksFile(){
   }
 
   int source, dest, weight;
-  graph_t *g = calloc(1, sizeof (graph_t));
+  struct Graph* graph = createGraph(nodeList.len); 
 
+  // Reading file and adding edges to graph
   while(fscanf(file, "%d %d %d", &source, &dest, &weight) != EOF ){
-    add_edge(g, source, dest, weight);
+    addEdge(graph, source, dest, weight);
   }
-  //dijkstra(g, 0, dest);
-  //print_paths(g);
-/*
-  int target = 4;
-  printf("\nTo arrive %d, send to %d first\n", target, next_id(g, target));
-*/
+
+  // Dijkstra will return all the paths we need
+	dijkstra(graph, newNode.id, newNode.nextNodes);
+  
+  /*
+  for(int i=0;i<nodeList.len;i++)
+    printf("\nTo arrive %i, sendo to %d", i, newNode.nextNodes[i]);
+  printf("\n");
+  */
 
   fclose(file);
 }
 
 int main(void){
   pthread_t tSend, tReceive;
-
-  printf("Who am I? ");
-  scanf("%d", &newNode.id);
 
   readFile();
   readLinksFile();
