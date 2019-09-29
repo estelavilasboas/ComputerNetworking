@@ -1,10 +1,12 @@
-#include<stdio.h>  //printf
-#include<string.h> //memset
-#include<stdlib.h> //exit(0);
-#include<pthread.h> //thread
-#include<arpa/inet.h>
-#include<sys/socket.h>
-//arrumar SERVER
+#include <stdio.h>  //printf
+#include <string.h> //memset
+#include <stdlib.h> //exit(0);
+#include <pthread.h> //thread
+#include <arpa/inet.h>
+#include <sys/socket.h>
+#include "dijkstra.c"
+
+//arrumar SERVER, BufferMaxLength
 typedef struct{
   int id;
   char IP[15];
@@ -23,7 +25,6 @@ typedef struct{
   char data[100];
 }Message;
 
-#define SERVER "127.0.0.1"
 #define BufferMaxLength 512
 Node newNode;
 NodeList nodeList;
@@ -65,7 +66,7 @@ void *socketSend(void *data){
     newSocket.sin_family = AF_INET;
     newSocket.sin_port = htons(port);
 
-    if(inet_aton(SERVER, &newSocket.sin_addr) == 0){
+    if(inet_aton(newNode.IP, &newSocket.sin_addr) == 0){
       fprintf(stderr, "inet_aton() failed\n");
       exit(1);
     }
@@ -123,8 +124,8 @@ void *socketReceive(void *data){
       die("recvfrom()");
 
     if(buffer->destId == newNode.id){
-      printf("\n\n\t~ Received message %d from node %d\n", buffer->id, buffer->sourceId);
-      printf("\t    Data: %s\n", buffer->data);
+      printf("\n\n\t~ Received message %d from node %d ~\n", buffer->id, buffer->sourceId);
+      printf("\t\tData: %s\n", buffer->data);
 
       buffer->destId = buffer->sourceId;
       buffer->sourceId = newNode.id;
@@ -135,7 +136,6 @@ void *socketReceive(void *data){
       //printf("\nSend a message to id: ");
 
     }else{
-
       printf("ERROU");
     }
 
@@ -145,18 +145,12 @@ void *socketReceive(void *data){
   close(s);
 }
 
-
-int main(void){
-  pthread_t tSend, tReceive;
+void readFile(){
   FILE *file;
+  printf("Searching my IP...\n");
 
-  printf("Who am I? ");
-  scanf("%d", &newNode.id);
-
-  printf("\nSearching my IP...\n");
-  
   if(( file = fopen("roteadores.config", "r")) == NULL){
-    printf("\n\t~ File could not be opened :( ~\n");
+    printf("\n\t~ roteadores.config: File could not be opened :( ~\n");
     exit(1);
   }
 
@@ -169,27 +163,59 @@ int main(void){
     nodeList.nodes[i].id = id;
     strcpy(nodeList.nodes[i].IP, IP);
     nodeList.nodes[i].port = port;
-
+  
     if(id == newNode.id){
       strcpy(newNode.IP, IP);
       newNode.port = port;
     }
   }
-  
+
   if(strlen(newNode.IP) <= 0){
     printf("\n\t~ IP not found :( ~\n");
     exit(1);
   }
 
+  printf("I am node %d, IP %s:%d\n", newNode.id, newNode.IP, newNode.port);
   fclose(file);
+}
 
-  printf("\nI am node %d with IP %s:%d\n", newNode.id, newNode.IP, newNode.port);
+void readLinksFile(){
+  FILE *file;
 
-  pthread_create(&tSend, NULL, socketSend, NULL);
+  if(( file = fopen("enlaces.config", "r")) == NULL){
+    printf("\n\t~ enlaces.config: File could not be opened :( ~\n");
+    exit(1);
+  }
+
+  int source, dest, weight;
+  graph_t *g = calloc(1, sizeof (graph_t));
+
+  while(fscanf(file, "%d %d %d", &source, &dest, &weight) != EOF ){
+    add_edge(g, source, dest, weight);
+  }
+  dijkstra(g, 0, dest);
+  //print_paths(g);
+/*
+  int target = 4;
+  printf("\nTo arrive %d, send to %d first\n", target, next_id(g, target));
+*/
+
+  fclose(file);
+}
+
+int main(void){
+  pthread_t tSend, tReceive;
+
+  printf("Who am I? ");
+  scanf("%d", &newNode.id);
+
+  readFile();
+  readLinksFile();
   pthread_create(&tReceive, NULL, socketReceive, NULL);
+  pthread_create(&tSend, NULL, socketSend, NULL);
 
-  pthread_join(tSend, NULL);
   pthread_join(tReceive, NULL);
+  pthread_join(tSend, NULL);
   printf("Threads returned\n");
 
   return 0;
