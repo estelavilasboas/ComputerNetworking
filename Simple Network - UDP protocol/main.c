@@ -1,9 +1,10 @@
-#include <stdio.h>  //printf
-#include <string.h> //memset
-#include <stdlib.h> //exit(0);
-#include <pthread.h> //thread
+#include <stdio.h>        //printf
+#include <string.h>       //memset
+#include <stdlib.h>       //exit(0);
+#include <pthread.h>      //thread
 #include <arpa/inet.h>
 #include <sys/socket.h>
+#include <time.h>         //time
 #include "dijkstra.c"
 
 //arrumar SERVER, BufferMaxLength
@@ -25,7 +26,7 @@ typedef struct{
   char data[100];
 }Message;
 
-#define BufferMaxLength 512
+//#define BufferMaxLength 512
 Node newNode;
 NodeList nodeList;
 
@@ -41,7 +42,7 @@ void *socketSend(void *data){
   int s, socketLength = sizeof(newSocket);
   
   while(1){
-    char buffer[BufferMaxLength];
+    Message *buffer = (Message *)malloc(sizeof(Message));
     Message *msg = (Message *)malloc(sizeof(Message));
 
     printf("\nSend a message to id: ");
@@ -83,13 +84,14 @@ void *socketSend(void *data){
     //receive a reply and print it.
     //clear the buffer by filling null,
     //it might have previously received data
-    memset(buffer, '\0', BufferMaxLength);
+    memset(buffer, '\0', sizeof(Message));
     //try to receive some data, this is a blocking call
-    if (recvfrom(s, buffer, BufferMaxLength, 0, (struct sockaddr *) &newSocket, &socketLength) == -1)
+    if (recvfrom(s, buffer, sizeof(Message), 0, (struct sockaddr *) &newSocket, &socketLength) == -1)
       die("recvfrom()");
 
     messageId++;
-    puts(buffer);
+    printf("\n\t~ %s%d ~\n", buffer->data, buffer->sourceId);
+    //puts(buffer);
   }
 
   close(s);
@@ -129,6 +131,7 @@ void *socketReceive(void *data){
 
       buffer->destId = buffer->sourceId;
       buffer->sourceId = newNode.id;
+      strcpy(buffer->data, "Confirmation: Message was received by node ");
 
       if(sendto(s, buffer, sizeof(Message), 0, (struct sockaddr*) &otherSocket, socketLength) == -1)
         die("sendto()");
@@ -193,7 +196,7 @@ void readLinksFile(){
   while(fscanf(file, "%d %d %d", &source, &dest, &weight) != EOF ){
     add_edge(g, source, dest, weight);
   }
-  dijkstra(g, 0, dest);
+  //dijkstra(g, 0, dest);
   //print_paths(g);
 /*
   int target = 4;
