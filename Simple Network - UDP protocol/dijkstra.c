@@ -195,13 +195,10 @@ int main () {
     graph_t *g = calloc(1, sizeof (graph_t));
     add_edge(g, 0, 1, 7);
     add_edge(g, 0, 2, 9);
-    add_edge(g, 0, 5, 14);
     add_edge(g, 1, 2, 10);
     add_edge(g, 1, 3, 15);
     add_edge(g, 2, 3, 11);
-    add_edge(g, 2, 5, 2);
     add_edge(g, 3, 4, 6);
-    add_edge(g, 4, 5, 9);
     dijkstra(g, 0, 4);
     print_paths(g);
 
