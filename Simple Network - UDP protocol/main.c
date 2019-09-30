@@ -26,6 +26,7 @@ typedef struct{
   int sourceId;
   int destId;
   char data[100];
+  int confirmation;
 }Message;
 
 Node newNode;
@@ -86,6 +87,7 @@ void *socketSend(void *data){
     scanf("%s", msg->data);
     msg->sourceId = newNode.id;
     msg->id = messageId;
+    msg->confirmation = 0;
 
     printf("~Message will be send to node %d. Destination: node %d", newNode.nextNodes[msg->destId], msg->destId);
 
@@ -97,8 +99,8 @@ void *socketSend(void *data){
     memset(buffer, '\0', sizeof(Message));
 
     // Try to receive a reply
-    if (recvfrom(s, buffer, sizeof(Message), 0, (struct sockaddr *) &newSocket, &socketLength) == -1)
-      die("recvfrom()");
+    /*if (recvfrom(s, buffer, sizeof(Message), 0, (struct sockaddr *) &newSocket, &socketLength) == -1)
+      die("recvfrom()");*/
 
     messageId++;
     // Print reply
@@ -146,6 +148,7 @@ void *socketReceive(void *data){
       buffer->destId = buffer->sourceId;
       buffer->sourceId = newNode.id;
       strcpy(buffer->data, "Confirmation: Message was received by node ");
+      buffer->confirmation = 1;
 
       // Send the confirmation message to the source
       if(sendto(s, buffer, sizeof(Message), 0, (struct sockaddr*) &otherSocket, socketLength) == -1)
