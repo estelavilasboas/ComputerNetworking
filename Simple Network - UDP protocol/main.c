@@ -9,7 +9,8 @@
 #include "dijkstra.c"
 
 #define MaxNumberNodes 15
-#define Timeout 250
+#define Timeout 5000
+#define SendAfterTimeout 5
 
 typedef struct{
   int id;
@@ -52,6 +53,18 @@ int getPort(Message *msg){
   return port;
 }
 
+void keepWaitingConfirmation(clock_t clock1){
+  clock_t clock2;
+  while(waitingConfirm){
+    clock2 = clock();
+    if( ( (clock2 - clock1)*1000/CLOCKS_PER_SEC ) >= Timeout ){
+      break;
+    }
+  }
+  if(waitingConfirm == true)
+    printf("\n\t~ TIMEOUT ~\n");
+}
+
 void *socketSend(void *data){
   int messageId=1, port=-1;
 
@@ -62,8 +75,7 @@ void *socketSend(void *data){
   while(1){
     Message *buffer = (Message *)malloc(sizeof(Message));
     Message *msg = (Message *)malloc(sizeof(Message));
-    clock_t clock1, clock2;
-    float tempo;
+    clock_t clock1;
 
     // Get destination node
     printf("\nSend a message to id: ");
@@ -103,15 +115,17 @@ void *socketSend(void *data){
     clock1 = clock();
     waitingConfirm = true;
 
-    while(waitingConfirm){
-      clock2 = clock();
-      if( ( (clock2 - clock1)*1000/CLOCKS_PER_SEC ) >= Timeout ){
-        break;
+    // Try to send the message again
+    for(int i = 1; i <= SendAfterTimeout; i++){
+      keepWaitingConfirmation(clock1);
+      if(waitingConfirm){
+        printf("~Sending message again. %d(st/nd/rd/th) attempt", i+1);
+        if(sendto(s, msg, sizeof(Message), 0, (struct sockaddr *) &newSocket, socketLength) == -1)
+          die("sendto()");
       }
     }
-    if(waitingConfirm == true)
-      printf("\n\t~ TIMEOUT ~\n");
-
+  
+    waitingConfirm = false;
     // Clear the buffer by filling null, it might have received data
     memset(buffer, '\0', sizeof(Message));
     messageId++;
