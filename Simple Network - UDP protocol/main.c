@@ -4,6 +4,7 @@
 #include <pthread.h>      //thread
 #include <arpa/inet.h>
 #include <sys/socket.h>
+#include <stdbool.h>
 #include <time.h>         //time
 #include "dijkstra.c"
 
@@ -26,7 +27,7 @@ typedef struct{
   int sourceId;
   int destId;
   char data[100];
-  int confirmation;
+  bool confirmation;
 }Message;
 
 Node newNode;
@@ -89,7 +90,7 @@ void *socketSend(void *data){
     msg->id = messageId;
     msg->confirmation = 0;
 
-    printf("~Message will be send to node %d. Destination: node %d", newNode.nextNodes[msg->destId], msg->destId);
+    printf("~Message will be send to node %d. Destination: node %d\n", newNode.nextNodes[msg->destId], msg->destId);
 
     // Send the message
     if(sendto(s, msg, sizeof(Message), 0, (struct sockaddr *) &newSocket, socketLength) == -1)
@@ -98,14 +99,7 @@ void *socketSend(void *data){
     // Clear the buffer by filling null, it might have received data
     memset(buffer, '\0', sizeof(Message));
 
-    // Try to receive a reply
-    /*if (recvfrom(s, buffer, sizeof(Message), 0, (struct sockaddr *) &newSocket, &socketLength) == -1)
-      die("recvfrom()");*/
-
     messageId++;
-    // Print reply
-    //printf("\n\n\t~ %s%d ~\n", buffer->data, buffer->sourceId);
-    //puts(buffer);
   }
 
   close(s);
@@ -113,7 +107,7 @@ void *socketSend(void *data){
 
 
 void *socketReceive(void *data){
-  struct sockaddr_in newSocket, otherSocket;
+  struct sockaddr_in newSocket, otherSocket, redirectSocket;;
   int s, socketLength = sizeof(newSocket), receiveLength;
 
   // Create a UDP socket
@@ -134,6 +128,7 @@ void *socketReceive(void *data){
     Message *buffer = (Message *)malloc(sizeof(Message));
     fflush(stdout);
     memset(buffer, '\0', sizeof(Message));
+    int port = -1;
 
     if((receiveLength = recvfrom(s, buffer, sizeof(Message), 0, (struct sockaddr *) &otherSocket, &socketLength)) == -1)
       die("recvfrom()");
@@ -141,30 +136,38 @@ void *socketReceive(void *data){
     // Check if the received message is for this node
     if(buffer->destId == newNode.id){
 
-      printf("\n\n\t~ Received message %d from node %d ~\n", buffer->id, buffer->sourceId);
-      printf("\t    Data: %s\n", buffer->data);
+      if(buffer->confirmation == 0){
+        printf("\n\n\t~ Received message %d ~", buffer->sourceId);
+        printf("\n\tSource: %d\tId: %d", buffer->sourceId, buffer->id);
+        printf("\n\tData: %s\n", buffer->data);
 
       // Prepare the confirmation message
-      buffer->destId = buffer->sourceId;
-      buffer->sourceId = newNode.id;
-      strcpy(buffer->data, "Confirmation: Message was received by node ");
-      buffer->confirmation = 1;
+        buffer->destId = buffer->sourceId;
+        buffer->sourceId = newNode.id;
+        strcpy(buffer->data, "Message was received by node ");
+        // It is a confirmation message now
+        buffer->confirmation = 1;
 
-      // Send the confirmation message to the source
-      if(sendto(s, buffer, sizeof(Message), 0, (struct sockaddr*) &otherSocket, socketLength) == -1)
-        die("sendto()");
+        if( (port = getPort(buffer)) == -1)
+          continue;
+        otherSocket.sin_port = htons(port);
 
-      //printf("\nSend a message to id: ");
+        // Send the confirmation message to the source
+        if(sendto(s, buffer, sizeof(Message), 0, (struct sockaddr*) &otherSocket, socketLength) == -1)
+          die("sendto()");
+
+      }else{
+        printf("\n\n\t\t~ Confirmation ~\n");
+        printf("\t%s%d\n", buffer->data, buffer->sourceId);
+      }
 
     }else{
-      struct sockaddr_in redirectSocket;
-      int s, port=-1;
-
+      int s, port = -1;
       // Search port
       if( (port = getPort(buffer)) == -1)
         continue;
       
-      printf("\n\n~ Redirecting message %d for node %d ~", buffer->id, newNode.nextNodes[buffer->destId]);
+      printf("\n~ Redirecting message %d for node %d", buffer->id, newNode.nextNodes[buffer->destId]);
       // Create a UDP socket
       if ((s=socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP)) == -1)
           die("socket");
@@ -176,7 +179,8 @@ void *socketReceive(void *data){
       if(inet_aton(newNode.IP, &redirectSocket.sin_addr) == 0){
         fprintf(stderr, "inet_aton() failed\n");
         exit(1);
-      }
+      } 
+
       if(sendto(s, buffer, sizeof(Message), 0, (struct sockaddr*) &redirectSocket, socketLength) == -1)
         die("sendto()");
 
