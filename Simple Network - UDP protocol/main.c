@@ -9,7 +9,7 @@
 #include "dijkstra.c"
 
 #define MaxNumberNodes 15
-#define Timeout 5000
+#define Timeout 1000
 #define SendAfterTimeout 5
 
 typedef struct{
@@ -85,11 +85,11 @@ void *socketSend(void *data){
     if( (port = getPort(msg)) == -1)
         continue;
     
-    // IPPROTO_UDP -> definindo que é o protocolo UDP, create a UDP socket
+    // Define/Create UDP socket
     if( (s=socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP)) == -1 )
       die("socket");
 
-    // Inicializa - zero out the struture
+    // Zero out the struture
     memset((char *) &newSocket, 0, sizeof(newSocket));
     newSocket.sin_family = AF_INET;
     newSocket.sin_port = htons(port);
@@ -117,6 +117,7 @@ void *socketSend(void *data){
 
     // Try to send the message again
     for(int i = 1; i <= SendAfterTimeout; i++){
+      // Check clock/timeout
       keepWaitingConfirmation(clock1);
       if(waitingConfirm){
         printf("~Sending message again. %d(st/nd/rd/th) attempt", i+1);
