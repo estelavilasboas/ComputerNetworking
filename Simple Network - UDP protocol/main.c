@@ -36,6 +36,18 @@ void die(char *s){
   exit(1);
 }
 
+int getPort(Message *msg){
+  int port = -1;
+  for(int i = 0; i!=nodeList.len; i++){
+    if(nodeList.nodes[i].id == newNode.nextNodes[msg->destId])
+      port = nodeList.nodes[i].port;
+  }
+  if(port == -1)
+    printf("\n\t~ id NOT found :( ~\n");
+  
+  return port;
+}
+
 void *socketSend(void *data){
   int messageId=1, port=-1;
 
@@ -52,16 +64,8 @@ void *socketSend(void *data){
     scanf("%d", &msg->destId);
 
     // Search port
-    for(int i = 0; i!=nodeList.len; i++){
-      // newNode.nextNodes[]: next node based on routing
-      if(nodeList.nodes[i].id == newNode.nextNodes[msg->destId])
-        port = nodeList.nodes[i].port;
-    }
-
-    if(port == -1){
-      printf("\n\t~ id NOT found :( ~\n");
-      continue;
-    }
+    if( (port = getPort(msg)) == -1)
+        continue;
     
     // IPPROTO_UDP -> definindo que é o protocolo UDP, create a UDP socket
     if( (s=socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP)) == -1 )
@@ -98,7 +102,7 @@ void *socketSend(void *data){
 
     messageId++;
     // Print reply
-    printf("\n\t~ %s%d ~\n", buffer->data, buffer->sourceId);
+    //printf("\n\n\t~ %s%d ~\n", buffer->data, buffer->sourceId);
     //puts(buffer);
   }
 
@@ -134,6 +138,7 @@ void *socketReceive(void *data){
 
     // Check if the received message is for this node
     if(buffer->destId == newNode.id){
+
       printf("\n\n\t~ Received message %d from node %d ~\n", buffer->id, buffer->sourceId);
       printf("\t    Data: %s\n", buffer->data);
 
@@ -149,54 +154,30 @@ void *socketReceive(void *data){
       //printf("\nSend a message to id: ");
 
     }else{
-      int port=-1;
-      Message *msg = (Message *)malloc(sizeof(Message));
-      msg->id = buffer->id;
-      msg->destId = buffer->destId;
-      msg->sourceId = buffer->sourceId;
-      strcpy(msg->data, buffer->data);
-      
-      printf("\n\n~ Redirecting message %d for node %d ~", buffer->id, newNode.nextNodes[buffer->destId]);
-
-      // Prepare the confirmation message
-      buffer->destId = buffer->sourceId;
-      buffer->sourceId = newNode.id;
-      strcpy(buffer->data, "Confirmation: Message was received by node ");
-
-      // Send the confirmation message to the source
-      if(sendto(s, buffer, sizeof(Message), 0, (struct sockaddr*) &otherSocket, socketLength) == -1)
-        die("sendto()");
-
-      // Clear the buffer by filling null, it might have received data
-      memset(buffer, '\0', sizeof(Message));
+      struct sockaddr_in redirectSocket;
+      int s, port=-1;
 
       // Search port
-      for(int i = 0; i!=nodeList.len; i++){
-        if(nodeList.nodes[i].id == newNode.nextNodes[msg->destId])
-          port = nodeList.nodes[i].port;
-      }
-
-      if(port == -1){
-        printf("\n\t~ id NOT found :( ~\n");
+      if( (port = getPort(buffer)) == -1)
         continue;
-      }
-      newSocket.sin_port = htons(port);
+      
+      printf("\n\n~ Redirecting message %d for node %d ~", buffer->id, newNode.nextNodes[buffer->destId]);
+      // Create a UDP socket
+      if ((s=socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP)) == -1)
+          die("socket");
 
-      if(inet_aton(newNode.IP, &newSocket.sin_addr) == 0){
+      memset((char *) &redirectSocket, 0, sizeof(redirectSocket));
+      redirectSocket.sin_family = AF_INET;
+      redirectSocket.sin_port = htons(port);
+
+      if(inet_aton(newNode.IP, &redirectSocket.sin_addr) == 0){
         fprintf(stderr, "inet_aton() failed\n");
         exit(1);
       }
-
-      if(sendto(s, msg, sizeof(Message), 0, (struct sockaddr*) &otherSocket, socketLength) == -1)
+      if(sendto(s, buffer, sizeof(Message), 0, (struct sockaddr*) &redirectSocket, socketLength) == -1)
         die("sendto()");
-      
-      // Clear the buffer by filling null, it might have received data
-      memset(buffer, '\0', sizeof(Message));
-      // Try to receive a reply
-      if (recvfrom(s, buffer, sizeof(Message), 0, (struct sockaddr *) &newSocket, &socketLength) == -1)
-        die("recvfrom()");
 
-      printf("\n\t~ %s%d ~\n", buffer->data, buffer->sourceId);
+      memset(buffer, '\0', sizeof(Message));
     }
   }
 
