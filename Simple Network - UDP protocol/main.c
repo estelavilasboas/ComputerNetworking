@@ -53,7 +53,8 @@ void *socketSend(void *data){
 
     // Search port
     for(int i = 0; i!=nodeList.len; i++){
-      if(nodeList.nodes[i].id == msg->destId)
+      // newNode.nextNodes[]: next node based on routing
+      if(nodeList.nodes[i].id == newNode.nextNodes[msg->destId])
         port = nodeList.nodes[i].port;
     }
 
@@ -81,6 +82,8 @@ void *socketSend(void *data){
     scanf("%s", msg->data);
     msg->sourceId = newNode.id;
     msg->id = messageId;
+
+    printf("~Message will be send to node %d. Destination: node %d", newNode.nextNodes[msg->destId], msg->destId);
 
     // Send the message
     if(sendto(s, msg, sizeof(Message), 0, (struct sockaddr *) &newSocket, socketLength) == -1)
@@ -123,7 +126,6 @@ void *socketReceive(void *data){
   
   while(1){
     Message *buffer = (Message *)malloc(sizeof(Message));
-
     fflush(stdout);
     memset(buffer, '\0', sizeof(Message));
 
@@ -147,10 +149,55 @@ void *socketReceive(void *data){
       //printf("\nSend a message to id: ");
 
     }else{
-      printf("ERROU");
-    }
+      int port=-1;
+      Message *msg = (Message *)malloc(sizeof(Message));
+      msg->id = buffer->id;
+      msg->destId = buffer->destId;
+      msg->sourceId = buffer->sourceId;
+      strcpy(msg->data, buffer->data);
+      
+      printf("\n\n~ Redirecting message %d for node %d ~", buffer->id, newNode.nextNodes[buffer->destId]);
 
-    
+      // Prepare the confirmation message
+      buffer->destId = buffer->sourceId;
+      buffer->sourceId = newNode.id;
+      strcpy(buffer->data, "Confirmation: Message was received by node ");
+
+      // Send the confirmation message to the source
+      if(sendto(s, buffer, sizeof(Message), 0, (struct sockaddr*) &otherSocket, socketLength) == -1)
+        die("sendto()");
+
+      // Clear the buffer by filling null, it might have received data
+      memset(buffer, '\0', sizeof(Message));
+
+      // Search port
+      for(int i = 0; i!=nodeList.len; i++){
+        if(nodeList.nodes[i].id == newNode.nextNodes[msg->destId])
+          port = nodeList.nodes[i].port;
+      }
+
+      if(port == -1){
+        printf("\n\t~ id NOT found :( ~\n");
+        continue;
+      }
+      newSocket.sin_port = htons(port);
+
+      if(inet_aton(newNode.IP, &newSocket.sin_addr) == 0){
+        fprintf(stderr, "inet_aton() failed\n");
+        exit(1);
+      }
+
+      if(sendto(s, msg, sizeof(Message), 0, (struct sockaddr*) &otherSocket, socketLength) == -1)
+        die("sendto()");
+      
+      // Clear the buffer by filling null, it might have received data
+      memset(buffer, '\0', sizeof(Message));
+      // Try to receive a reply
+      if (recvfrom(s, buffer, sizeof(Message), 0, (struct sockaddr *) &newSocket, &socketLength) == -1)
+        die("recvfrom()");
+
+      printf("\n\t~ %s%d ~\n", buffer->data, buffer->sourceId);
+    }
   }
 
   close(s);
