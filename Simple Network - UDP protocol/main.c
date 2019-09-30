@@ -9,6 +9,7 @@
 #include "dijkstra.c"
 
 #define MaxNumberNodes 15
+#define Timeout 250
 
 typedef struct{
   int id;
@@ -18,7 +19,7 @@ typedef struct{
 }Node;
 
 typedef struct{
-  Node nodes[99];
+  Node nodes[MaxNumberNodes];
   int len;
 }NodeList;
 
@@ -32,6 +33,7 @@ typedef struct{
 
 Node newNode;
 NodeList nodeList;
+bool waitingConfirm = false;
 
 void die(char *s){
   perror(s);
@@ -60,6 +62,8 @@ void *socketSend(void *data){
   while(1){
     Message *buffer = (Message *)malloc(sizeof(Message));
     Message *msg = (Message *)malloc(sizeof(Message));
+    clock_t clock1, clock2;
+    float tempo;
 
     // Get destination node
     printf("\nSend a message to id: ");
@@ -96,9 +100,20 @@ void *socketSend(void *data){
     if(sendto(s, msg, sizeof(Message), 0, (struct sockaddr *) &newSocket, socketLength) == -1)
       die("sendto()");
 
+    clock1 = clock();
+    waitingConfirm = true;
+
+    while(waitingConfirm){
+      clock2 = clock();
+      if( ( (clock2 - clock1)*1000/CLOCKS_PER_SEC ) >= Timeout ){
+        break;
+      }
+    }
+    if(waitingConfirm == true)
+      printf("\n\t~ TIMEOUT ~\n");
+
     // Clear the buffer by filling null, it might have received data
     memset(buffer, '\0', sizeof(Message));
-
     messageId++;
   }
 
@@ -157,6 +172,7 @@ void *socketReceive(void *data){
           die("sendto()");
 
       }else{
+        waitingConfirm = false;
         printf("\n\n\t\t~ Confirmation ~\n");
         printf("\t%s%d\n", buffer->data, buffer->sourceId);
       }
@@ -232,7 +248,7 @@ void readFile(){
 
 void readLinksFile(){
   FILE *file;
-  newNode.nextNodes = malloc(sizeof(Message)*MaxNumberNodes);
+  newNode.nextNodes = malloc(sizeof(int)*MaxNumberNodes);
 
   if(( file = fopen("enlaces.config", "r")) == NULL){
     printf("\n\t~ enlaces.config: File could not be opened :( ~\n");
