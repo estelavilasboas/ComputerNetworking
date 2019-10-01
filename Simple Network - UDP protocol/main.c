@@ -71,6 +71,7 @@ void *socketSend(void *data){
   // Set socket for thread
   struct sockaddr_in newSocket;
   int s, socketLength = sizeof(newSocket);
+  char IP[15];
   
   while(1){
     Message *buffer = (Message *)malloc(sizeof(Message));
@@ -83,7 +84,13 @@ void *socketSend(void *data){
 
     // Search port
     if( (port = getPort(msg)) == -1)
-        continue;
+      continue;
+    
+    // Search IP
+    for(int i = 0; i!=nodeList.len; i++){
+      if(nodeList.nodes[i].id == newNode.nextNodes[msg->destId])
+        strcpy(IP, nodeList.nodes[i].IP);
+    }
     
     // Define/Create UDP socket
     if( (s=socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP)) == -1 )
@@ -94,7 +101,7 @@ void *socketSend(void *data){
     newSocket.sin_family = AF_INET;
     newSocket.sin_port = htons(port);
 
-    if(inet_aton(newNode.IP, &newSocket.sin_addr) == 0){
+    if(inet_aton(IP, &newSocket.sin_addr) == 0){
       fprintf(stderr, "inet_aton() failed\n");
       exit(1);
     }
@@ -194,9 +201,11 @@ void *socketReceive(void *data){
 
     }else{
       int s, port = -1;
+      char *IP;
       // Search port
       if( (port = getPort(buffer)) == -1)
         continue;
+
       
       printf("\n~ Redirecting message %d for node %d", buffer->id, newNode.nextNodes[buffer->destId]);
       // Create a UDP socket
