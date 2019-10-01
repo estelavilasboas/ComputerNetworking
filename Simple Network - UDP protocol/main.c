@@ -201,12 +201,17 @@ void *socketReceive(void *data){
 
     }else{
       int s, port = -1;
-      char *IP;
+      char IP[15];
       // Search port
       if( (port = getPort(buffer)) == -1)
         continue;
 
-      
+      // Search IP
+      for(int i = 0; i!=nodeList.len; i++){
+        if(nodeList.nodes[i].id == newNode.nextNodes[buffer->destId])
+          strcpy(IP, nodeList.nodes[i].IP);
+      }
+
       printf("\n~ Redirecting message %d for node %d", buffer->id, newNode.nextNodes[buffer->destId]);
       // Create a UDP socket
       if ((s=socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP)) == -1)
@@ -216,7 +221,7 @@ void *socketReceive(void *data){
       redirectSocket.sin_family = AF_INET;
       redirectSocket.sin_port = htons(port);
 
-      if(inet_aton(newNode.IP, &redirectSocket.sin_addr) == 0){
+      if(inet_aton(IP, &redirectSocket.sin_addr) == 0){
         fprintf(stderr, "inet_aton() failed\n");
         exit(1);
       } 
