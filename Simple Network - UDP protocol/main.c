@@ -113,7 +113,7 @@ void *socketSend(void *data){
     msg->id = messageId;
     msg->confirmation = 0;
 
-    printf("~Message will be send to node %d. Destination: node %d\n", newNode.nextNodes[msg->destId], msg->destId);
+    printf("~Message will be send to router %d. Destination: router %d\n", newNode.nextNodes[msg->destId], msg->destId);
 
     // Send the message
     if(sendto(s, msg, sizeof(Message), 0, (struct sockaddr *) &newSocket, socketLength) == -1)
@@ -181,7 +181,7 @@ void *socketReceive(void *data){
       // Prepare the confirmation message
         buffer->destId = buffer->sourceId;
         buffer->sourceId = newNode.id;
-        strcpy(buffer->data, "Message was received by node ");
+        strcpy(buffer->data, "Message was received by router ");
         // It is a confirmation message now
         buffer->confirmation = 1;
 
@@ -212,7 +212,7 @@ void *socketReceive(void *data){
           strcpy(IP, nodeList.nodes[i].IP);
       }
 
-      printf("\n~ Redirecting message %d for node %d", buffer->id, newNode.nextNodes[buffer->destId]);
+      printf("\n~ Redirecting message %d:%d for router %d", buffer->id, buffer->sourceId, newNode.nextNodes[buffer->destId]);
       // Create a UDP socket
       if ((s=socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP)) == -1)
           die("socket");
@@ -271,7 +271,7 @@ void readFile(){
     exit(1);
   }
 
-  printf("I am node %d, IP %s:%d\n", newNode.id, newNode.IP, newNode.port);
+  printf("I am router %d, IP %s:%d\n", newNode.id, newNode.IP, newNode.port);
   fclose(file);
 }
 
