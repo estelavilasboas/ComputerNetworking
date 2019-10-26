@@ -1,0 +1,36 @@
+        UNIVERSIDADE FEDERAL DA FRONTEIRA SUL
+             ESTELA MARIS VILAS BOAS
+                   1611100054
+              REDES DE COMPUTADORES
+
+TRABALHO 1
+
+    COMPILAR:
+        gcc main.c -lpthread
+
+    COMO USAR:
+        A primeira mensagem que o programa imprime na tela
+    é "Who am I?", o usuário deve digitar o id do roteador/
+    nodo. Será feita a busca do IP e portas nos arquivos de
+    configuração. Com a busca concluída, sera impresso no
+    terminal a tipologia, criada a partir do Algoritmo de
+    Dijkstra.
+        A partir disso, é possível escolher o nodo/roteador
+    para o qual deseja enviar a mensagem digitando seu id
+        
+            Send a message to id: 1
+            Enter message:
+        
+    e inserir a mensagem.
+        O programa mostrará um aviso para onde enviará a
+    mensagem
+
+        ~Message will be send to node 1. Destination: 
+                        node 3
+
+    assim como enviará confirmações, avisos de timeout e
+    reenvio.
+
+                    ~ TIMEOUT ~
+            ~Sending message again. 4(st/nd/rd/th)
+                      attempt
