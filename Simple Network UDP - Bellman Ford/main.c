@@ -12,6 +12,12 @@
 #define Timeout 1000
 #define SendAfterTimeout 5
 
+enum MessageType{
+  ConfirmationMsg,
+  DataMsg,
+  DistanceMsg
+};
+
 typedef struct{
   int id;
   char IP[15];
@@ -29,7 +35,7 @@ typedef struct{
   int sourceId;
   int destId;
   char data[100];
-  bool confirmation;
+  int type;
 }Message;
 
 Node newNode;
@@ -120,7 +126,7 @@ void *socketSend(void *data){
     scanf("%s", msg->data);
     msg->sourceId = newNode.id;
     msg->id = messageId;
-    msg->confirmation = 0;
+    msg->type = DataMsg;
 
     printf("~Message will be send to router %d. Destination: router %d\n", newNode.nextNodes[msg->destId], msg->destId);
 
@@ -182,7 +188,7 @@ void *socketReceive(void *data){
     // Check if the received message is for this node
     if(buffer->destId == newNode.id){
 
-      if(buffer->confirmation == 0){
+      if(buffer->type == DataMsg){
         printf("\n\n\t~ Received message %d ~", buffer->sourceId);
         printf("\n\tSource: %d\tId: %d", buffer->sourceId, buffer->id);
         printf("\n\tData: %s\n", buffer->data);
@@ -192,7 +198,7 @@ void *socketReceive(void *data){
         buffer->sourceId = newNode.id;
         strcpy(buffer->data, "Message was received by router ");
         // It is a confirmation message now
-        buffer->confirmation = 1;
+        buffer->type = ConfirmationMsg;
 
         if( (port = getPort(buffer)) == -1)
           continue;
