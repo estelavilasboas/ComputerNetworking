@@ -8,7 +8,7 @@
 #include <time.h>         //time
 #include "dijkstra.c"
 
-#define MaxNumberNodes 15
+#define MaxNumberNodes 10
 #define Timeout 1000
 #define SendAfterTimeout 5
 
@@ -35,6 +35,15 @@ typedef struct{
 Node newNode;
 NodeList nodeList;
 bool waitingConfirm = false;
+
+typedef struct{
+  int node;
+  int distance;
+}DistanceNode;
+
+typedef struct{
+  DistanceNode distances[MaxNumberNodes];
+}DistanceNodeList;
 
 void die(char *s){
   perror(s);
