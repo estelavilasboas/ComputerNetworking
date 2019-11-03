@@ -7,6 +7,7 @@
 #include <stdbool.h>
 #include <time.h>         //time
 #include "dijkstra.c"
+#include "bellmanFord.c"
 
 #define MaxNumberNodes 10
 #define Timeout 1000
@@ -23,6 +24,8 @@ typedef struct{
   char IP[15];
   int port;
   int *nextNodes;
+  DistanceNode *distanceVector;
+  //timestamp
 }Node;
 
 typedef struct{
@@ -41,15 +44,6 @@ typedef struct{
 Node newNode;
 NodeList nodeList;
 bool waitingConfirm = false;
-
-typedef struct{
-  int node;
-  int distance;
-}DistanceNode;
-
-typedef struct{
-  DistanceNode distances[MaxNumberNodes];
-}DistanceNodeList;
 
 void die(char *s){
   perror(s);
@@ -251,12 +245,35 @@ void *socketReceive(void *data){
   close(s);
 }
 
+void addDistanceVector(int target, int weight){
+  int len = nodeList.len;
+  newNode.distanceVector[len].node = target;
+  newNode.distanceVector[len].distance = weight;
+  nodeList.len++;
+}
+
+void showDistanceVector() {
+  printf("\n\t(Node, Distance) = [");
+  for(int i=0; i<nodeList.len; i++){
+    printf(" ( %d, %d ) ", newNode.distanceVector[i].node, newNode.distanceVector[i].distance);
+  }
+  printf("]");
+}
+
+bool checkLink(int nodeId){
+  for(int i=0; i<nodeList.len; i++){
+    if(nodeId == newNode.distanceVector[i].node)
+      return true;
+  }
+  return false;
+}
+
 void readFile(){
   FILE *file;
 
-  printf("Who am I? ");
-  scanf("%d", &newNode.id);
-  printf("Searching my IP...\n");
+  //printf("Who am I? "); OLD CODE
+  //scanf("%d", &newNode.id); OLD CODE
+  printf("\nSearching my IP...\n");
 
   if(( file = fopen("roteadores.config", "r")) == NULL){
     printf("\n\t~ roteadores.config: File could not be opened :( ~\n");
@@ -265,7 +282,7 @@ void readFile(){
 
   int id, port;
   char IP[15];
-  nodeList.len = 0;
+  //nodeList.len = 0; OLD CODE
 
   // Reading the file and saving nodes data.
   while(fscanf(file, "%d %d %s", &id, &port, IP) != EOF ){
@@ -294,21 +311,37 @@ void readLinksFile(){
   FILE *file;
   newNode.nextNodes = malloc(sizeof(int)*MaxNumberNodes);
 
+  // initialize distance vector
+  newNode.distanceVector = malloc(sizeof(DistanceNode)*MaxNumberNodes);
+  nodeList.len = 0;
+
   if(( file = fopen("enlaces.config", "r")) == NULL){
     printf("\n\t~ enlaces.config: File could not be opened :( ~\n");
     exit(1);
   }
 
+  printf("Who am I? ");
+  scanf("%d", &newNode.id);
+  printf("Checking links...\n");
+
   int source, dest, weight;
-  struct Graph* graph = createGraph(nodeList.len); 
+  //struct Graph* graph = createGraph(nodeList.len); OLD CODE
+
+  // Add yourself to distance vector
+  addDistanceVector(newNode.id, 0);
 
   // Reading file and adding edges to graph
   while(fscanf(file, "%d %d %d", &source, &dest, &weight) != EOF ){
-    addEdge(graph, source, dest, weight);
+    //addEdge(graph, source, dest, weight); OLD CODE
+
+    if(source == newNode.id)
+      addDistanceVector(dest, weight);
+    else if(dest == newNode.id)
+      addDistanceVector(source, weight);
   }
 
-  // Dijkstra will return all the paths we need
-	dijkstra(graph, newNode.id, newNode.nextNodes);
+  // Dijkstra will return all the paths we need OLD CODE
+	//dijkstra(graph, newNode.id, newNode.nextNodes); OLD CODE
   
   /*
   for(int i=0;i<nodeList.len;i++)
@@ -316,14 +349,17 @@ void readLinksFile(){
   printf("\n");
   */
 
+ showDistanceVector();
+
   fclose(file);
 }
 
 int main(void){
   pthread_t tSend, tReceive;
 
-  readFile();
   readLinksFile();
+  readFile();
+  //readLinksFile();
   pthread_create(&tReceive, NULL, socketReceive, NULL);
   pthread_create(&tSend, NULL, socketSend, NULL);
 

@@ -3,14 +3,12 @@
 #include <stdio.h> 
 #include <stdlib.h> 
 
-struct DistanceListNode{
-  int router;
+typedef struct{
+  int node;
   int distance;
-};
+}DistanceNode;
 
-struct DistanceList{
 
-};
 /*
 int main (){
 
