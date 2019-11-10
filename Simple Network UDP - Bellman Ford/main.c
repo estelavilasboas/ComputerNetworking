@@ -23,7 +23,7 @@ typedef struct{
   int id;
   char IP[15];
   int port;
-  int *nextNodes;
+  int *nextNodes; // OLD CODE
   DistanceNode *distanceVector;
   //timestamp
 }Node;
@@ -253,11 +253,51 @@ void addDistanceVector(int target, int weight){
 }
 
 void showDistanceVector() {
-  printf("\n\t(Node, Distance) = [");
+  printf("\t(Node, Distance) = [");
   for(int i=0; i<nodeList.len; i++){
     printf(" ( %d, %d ) ", newNode.distanceVector[i].node, newNode.distanceVector[i].distance);
   }
   printf("]");
+}
+
+char* vectorToString(){
+  char* string = malloc(sizeof(char)*(MaxNumberNodes*2));
+  for(int i=0; i<nodeList.len; i++){
+    int target = newNode.distanceVector[i].node;
+    int weight = newNode.distanceVector[i].distance;
+
+    char auxTarget[2], auxWeight[2];
+    sprintf(auxTarget, "%d", target);
+    sprintf(auxWeight, "%d", weight);
+
+    strcat(string, auxTarget);
+    strcat(string, ":");
+    strcat(string, auxWeight);
+    strcat(string, " ");
+
+  }
+  return string;
+}
+
+void stringToVector(char* string){
+  char *item = malloc(strlen(string));
+  char *stringCopy = malloc(strlen(string));
+  int owner = -1, node, distance;
+
+  strcpy(stringCopy, string);
+  
+  //example: "1:0 0:3"
+  strcpy(item, strtok(stringCopy, " "));   // "1:0"
+  strtok(item, ":");                       // "1"
+  node = atoi(item);
+  item = strtok(NULL, ":");                // "0"
+  distance = atoi(item);
+
+  strcpy(stringCopy, string);       // "1:0 0:3"
+  strtok(stringCopy, " ");          // "1:0"
+  stringCopy = strtok(NULL, " ");   // "0:3"
+  //printf("\n%d | %d | %s | %s\n", node, distance, item, stringCopy);
+
 }
 
 bool checkLink(int nodeId){
@@ -280,21 +320,25 @@ void readFile(){
     exit(1);
   }
 
-  int id, port;
+  int id, port, position=0;
   char IP[15];
   //nodeList.len = 0; OLD CODE
 
   // Reading the file and saving nodes data.
   while(fscanf(file, "%d %d %s", &id, &port, IP) != EOF ){
-    int i = nodeList.len++;
-    nodeList.nodes[i].id = id;
-    strcpy(nodeList.nodes[i].IP, IP);
-    nodeList.nodes[i].port = port;
-    nodeList.nodes[i].nextNodes = NULL;
+    
+    /*int i = nodeList.len++; OLD CODE */
   
     if(id == newNode.id){
       strcpy(newNode.IP, IP);
       newNode.port = port;
+
+    } else if(checkLink(id) && position<nodeList.len){
+      nodeList.nodes[position].id = id;
+      strcpy(nodeList.nodes[position].IP, IP);
+      nodeList.nodes[position].port = port;
+      nodeList.nodes[position].nextNodes = NULL; // OLD CODE
+      //printf("id: %d  %s:%d", nodeList.nodes[position].id, nodeList.nodes[position].IP, nodeList.nodes[position].port);
     }
   }
 
@@ -302,6 +346,10 @@ void readFile(){
     printf("\n\t~ IP not found :( ~\n");
     exit(1);
   }
+
+  char *aux = vectorToString();
+  stringToVector(aux);
+
 
   printf("I am router %d, IP %s:%d\n", newNode.id, newNode.IP, newNode.port);
   fclose(file);
