@@ -44,6 +44,10 @@ typedef struct{
 Node newNode;
 NodeList nodeList;
 bool waitingConfirm = false;
+bool vectorUpdated = false;
+bool sendVectorTimeout = false;
+char* vectorToString();
+void stringToVector(char *string);
 
 void die(char *s){
   perror(s);
@@ -62,6 +66,16 @@ int getPort(Message *msg){
   return port;
 }
 
+void waitingSendVector(clock_t clock1){
+  clock_t clock2;
+  while(!sendVectorTimeout){
+    clock2 = clock();
+    if( ( (clock2 - clock1)*1000/CLOCKS_PER_SEC ) >= Timeout ){
+      sendVectorTimeout = true;
+    }
+  }
+}
+
 void keepWaitingConfirmation(clock_t clock1){
   clock_t clock2;
   while(waitingConfirm){
@@ -72,6 +86,56 @@ void keepWaitingConfirmation(clock_t clock1){
   }
   if(waitingConfirm == true)
     printf("\n\t~ TIMEOUT ~\n");
+}
+
+void *socketSendVector(){
+  int port = -1;
+  struct sockaddr_in newSocket;
+  int s, len = nodeList.len, socketLength = sizeof(newSocket);
+  char IP[15];
+
+  while(1){
+    Message *buffer = (Message *)malloc(sizeof(Message));
+    Message *msg = (Message *)malloc(sizeof(Message));
+    clock_t clock1;
+
+    // Get and prepare the distance vector
+    msg->sourceId = newNode.id;
+    msg->type = DistanceMsg;
+    strcpy(msg->data, vectorToString());
+    clock1 = clock();
+
+    // if newNode vector was updated, send again
+    if( vectorUpdated || sendVectorTimeout ){
+      for(int i=0; i < len; i++){                                                  
+        // Define/Create UDP socket
+        if( (s=socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP)) == -1 )
+          die("socket");
+        
+        port = nodeList.nodes[i].port;
+        strcpy(IP, nodeList.nodes[i].IP);
+
+        // Zero out the struture
+        memset((char *) &newSocket, 0, sizeof(newSocket));
+        newSocket.sin_family = AF_INET;
+        newSocket.sin_port = htons(port);
+
+        if(inet_aton(IP, &newSocket.sin_addr) == 0){
+          fprintf(stderr, "inet_aton() failed\n");
+          exit(1);
+        }
+
+        // Send the message
+        if(sendto(s, msg, sizeof(Message), 0, (struct sockaddr *) &newSocket, socketLength) == -1)
+          die("sendto()");
+
+        // Clear the buffer by filling null, it might have received data
+        memset(buffer, '\0', sizeof(Message));
+      }
+    }
+  }
+
+  close(s);
 }
 
 void *socketSend(void *data){
@@ -122,6 +186,8 @@ void *socketSend(void *data){
     msg->id = messageId;
     msg->type = DataMsg;
 
+    //msg->data = vectorToString();
+    //msg->type = DistanceMsg;// test
     printf("~Message will be send to router %d. Destination: router %d\n", newNode.nextNodes[msg->destId], msg->destId);
 
     // Send the message
@@ -131,7 +197,7 @@ void *socketSend(void *data){
     clock1 = clock();
     waitingConfirm = true;
 
-    // Try to send the message again
+    // Try to send the message again (timeout)
     for(int i = 1; i <= SendAfterTimeout; i++){
       // Check clock/timeout
       keepWaitingConfirmation(clock1);
@@ -201,6 +267,11 @@ void *socketReceive(void *data){
         // Send the confirmation message to the source
         if(sendto(s, buffer, sizeof(Message), 0, (struct sockaddr*) &otherSocket, socketLength) == -1)
           die("sendto()");
+
+      }else if(buffer->type == DistanceMsg){
+        stringToVector(buffer->data);
+        //atualizar vetor aqui
+        vectorUpdated = true;
 
       }else{
         waitingConfirm = false;
@@ -280,24 +351,47 @@ char* vectorToString(){
 }
 
 void stringToVector(char* string){
+  DistanceNode *distanceVector = malloc(sizeof(DistanceNode)*MaxNumberNodes);
   char *item = malloc(strlen(string));
   char *stringCopy = malloc(strlen(string));
-  int owner = -1, node, distance;
+  int owner = -1, position = 0, node=0, distance=0;
+  int i=0;
 
   strcpy(stringCopy, string);
+
+  while(stringCopy!=NULL){
+    //example: "1:0 0:3"
+    strcpy(item, strtok(stringCopy, " "));   // "1:0"
+    strtok(item, ":");                       // "1"
+    node = atoi(item);
+    item = strtok(NULL, ":");                // "0"
+    distance = atoi(item);
+
+    strcpy(stringCopy, string);           // "1:0 0:3"
+    strtok(stringCopy, " ");              // "1:0"
+    for(int jump=0; jump < i+1; jump++)
+      stringCopy = strtok(NULL, " ");     // "0:3"
+
+    if(distance == 0){
+      owner = node;
+      for( ; position < nodeList.len; position++){
+        if(owner == nodeList.nodes[position].id)
+          break;
+      }
+    }
+    // insert values into distanceVector
+    distanceVector[i].node = node;
+    distanceVector[i].distance = distance;
+    i++;
+
+    //printf("\n%d | %d | %s | %ld\n", node, distance, stringCopy, strlen(string));
+  }
   
-  //example: "1:0 0:3"
-  strcpy(item, strtok(stringCopy, " "));   // "1:0"
-  strtok(item, ":");                       // "1"
-  node = atoi(item);
-  item = strtok(NULL, ":");                // "0"
-  distance = atoi(item);
-
-  strcpy(stringCopy, string);       // "1:0 0:3"
-  strtok(stringCopy, " ");          // "1:0"
-  stringCopy = strtok(NULL, " ");   // "0:3"
-  //printf("\n%d | %d | %s | %s\n", node, distance, item, stringCopy);
-
+  if(owner != -1){
+    // insert distance vector into node distance vector
+    nodeList.nodes[position].distanceVector = NULL;
+    nodeList.nodes[position].distanceVector = distanceVector;
+  }
 }
 
 bool checkLink(int nodeId){
@@ -347,11 +441,7 @@ void readFile(){
     exit(1);
   }
 
-  char *aux = vectorToString();
-  stringToVector(aux);
-
-
-  printf("I am router %d, IP %s:%d\n", newNode.id, newNode.IP, newNode.port);
+  printf("\tI am router %d, IP %s:%d\n", newNode.id, newNode.IP, newNode.port);
   fclose(file);
 }
 
@@ -397,22 +487,24 @@ void readLinksFile(){
   printf("\n");
   */
 
- showDistanceVector();
+  showDistanceVector();
 
   fclose(file);
 }
 
 int main(void){
-  pthread_t tSend, tReceive;
+  pthread_t tSend, tReceive, tDistanceVector;
 
   readLinksFile();
   readFile();
-  //readLinksFile();
+  //readLinksFile(); OLD CODE
   pthread_create(&tReceive, NULL, socketReceive, NULL);
   pthread_create(&tSend, NULL, socketSend, NULL);
-
+  pthread_create(&tDistanceVector, NULL, socketSendVector, NULL);
+  
   pthread_join(tReceive, NULL);
   pthread_join(tSend, NULL);
+  pthread_join(tDistanceVector, NULL);
   printf("Threads returned\n");
 
   return 0;

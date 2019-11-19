@@ -8,7 +8,9 @@ typedef struct{
   int distance;
 }DistanceNode;
 
-
+DistanceNode* updateVector(DistanceNode* receivedVector, DistanceNode* distanceVector){
+  
+}
 /*
 int main (){
 
