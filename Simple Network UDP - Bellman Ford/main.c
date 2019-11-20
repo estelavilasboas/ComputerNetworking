@@ -171,8 +171,6 @@ void *socketSendVector(){
 
   // create message
   Message *msg = (Message *)malloc(sizeof(Message));
-  msg->sourceId = newNode.id;
-  msg->type = DistanceMsg;
 
   clock_t clock2;
 
@@ -185,10 +183,14 @@ void *socketSendVector(){
 
     // if newNode vector was updated, send again
     if( vectorUpdated || sendVectorTimeout ){
-      printf("\n Sending distance vector");
       strcpy(msg->data, vectorToString());
+      //printf("\n Sending distance vector: %s", msg->data);
 
       for(int i=0; i < len; i++){
+        msg->destId = nodeList.nodes[i].id;
+        msg->type = DistanceMsg;
+        msg->sourceId = newNode.id;
+
         // Define/Create UDP socket
         if( (s=socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP)) == -1 )
           die("socket");
@@ -248,15 +250,15 @@ void *socketSend(void *data){
     port = nodeList.nodes[positionNodeList].port;
     strcpy(IP, nodeList.nodes[positionNodeList].IP);
 
-    /*// Search port OLD CODE
-    if( (port = getPort(msg)) == -1)
-      continue;*/
+    // Search port OLD CODE
+    //if( (port = getPort(msg)) == -1)
+    //  continue;
     
-    /*// Search IP  OLD CODE
-    for(int i = 0; i!=nodeList.len; i++){
-      if(nodeList.nodes[i].id == newNode.nextNodes[msg->destId])
-        strcpy(IP, nodeList.nodes[i].IP);
-    }*/
+    // Search IP  OLD CODE
+    //for(int i = 0; i!=nodeList.len; i++){
+    //  if(nodeList.nodes[i].id == newNode.nextNodes[msg->destId])
+    //    strcpy(IP, nodeList.nodes[i].IP);
+    //}
     
     // Define/Create UDP socket
     if( (s=socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP)) == -1 )
@@ -371,10 +373,11 @@ void *socketReceive(void *data){
 
       }else if(buffer->type == DistanceMsg){
         // Received a distance vector from a neighbour
+        printf("\n%s\n", buffer->data);
         stringToVector(buffer->data);
         
         // TO DO: atualizar vetor aqui
-        vectorUpdated = true;
+        //vectorUpdated = true;
 
       }else{
         waitingConfirm = false;
@@ -443,7 +446,7 @@ void showDistanceVector() {
 
 char* vectorToString(){
   char* string = malloc(sizeof(char)*(MaxNumberNodes*2));
-  for(int i=0; i<nodeList.len; i++){
+  for(int i=0; i<newNode.distanceVectorLen; i++){
     int target = newNode.distanceVector[i].node;
     int weight = newNode.distanceVector[i].distance;
 
@@ -455,7 +458,6 @@ char* vectorToString(){
     strcat(string, ":");
     strcat(string, auxWeight);
     strcat(string, " ");
-
   }
   return string;
 }
@@ -494,7 +496,7 @@ void stringToVector(char* string){
     distanceVector[i].distance = distance;
     i++;
 
-    //printf("\n%d | %d | %s | %ld\n", node, distance, stringCopy, strlen(string));
+    //printf("\n%d | %d | %s | %d\n", node, distance, stringCopy, distanceVector[i-1].distance); // TEST
   }
   
   if(owner != -1){
@@ -504,6 +506,14 @@ void stringToVector(char* string){
     nodeList.nodes[position].distanceVectorLen = i;
     nodeList.nodes[position].active = true;
     nodeList.nodes[position].timestamp = clock();
+    nodeList.nodes[position].distanceVectorLen = i;
+
+    printf("\n\t~ Received distance vetor from %d ~\n", nodeList.nodes[position].id);
+    printf("\t(Node, Distance) = [");
+    for(int j=0; j<nodeList.nodes[position].distanceVectorLen; j++){
+      printf(" ( %d, %d ) ", nodeList.nodes[position].distanceVector[j].node, nodeList.nodes[position].distanceVector[j].distance);
+    }
+    printf("]");
   }
 }
 
@@ -614,9 +624,9 @@ int main(void){
   readLinksFile();
   readFile();
   //readLinksFile(); OLD CODE
+  pthread_create(&tDistanceVector, NULL, socketSendVector, NULL);
   pthread_create(&tReceive, NULL, socketReceive, NULL);
   pthread_create(&tSend, NULL, socketSend, NULL);
-  pthread_create(&tDistanceVector, NULL, socketSendVector, NULL);
   
   pthread_join(tReceive, NULL);
   pthread_join(tSend, NULL);
