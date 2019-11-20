@@ -33,7 +33,8 @@ typedef struct{
   int *nextNodes; // OLD CODE
   DistanceNode *distanceVector;
   int distanceVectorLen;
-  //timestamp
+  bool active;
+  clock_t timestamp;
 }Node;
 
 typedef struct{
@@ -84,7 +85,7 @@ int getDistance(int id){
   }
 }
 
-// Bellman-Ford section:
+// Bellman-Ford result analysis section:
 // get destination position in the nodeList
 // then we can get ports and IPs
 int getDestinationPosition(int distance, int destId){
@@ -163,13 +164,13 @@ void *socketSendVector(){
   while(1){
     Message *buffer = (Message *)malloc(sizeof(Message));
     Message *msg = (Message *)malloc(sizeof(Message));
-    clock_t clock1;
 
     // Get and prepare the distance vector
     msg->sourceId = newNode.id;
     msg->type = DistanceMsg;
     strcpy(msg->data, vectorToString());
-    clock1 = clock();
+
+    waitingSendVector(newNode.timestamp);
 
     // if newNode vector was updated, send again
     if( vectorUpdated || sendVectorTimeout ){
@@ -187,6 +188,7 @@ void *socketSendVector(){
         newSocket.sin_port = htons(port);
 
         if(inet_aton(IP, &newSocket.sin_addr) == 0){
+          printf("send vector");
           fprintf(stderr, "inet_aton() failed\n");
           exit(1);
         }
@@ -199,6 +201,8 @@ void *socketSendVector(){
         memset(buffer, '\0', sizeof(Message));
       }
 
+      newNode.timestamp = clock();
+      sendVectorTimeout = false;
       vectorUpdated = false;
     }
   }
@@ -486,6 +490,8 @@ void stringToVector(char* string){
     nodeList.nodes[position].distanceVector = NULL;
     nodeList.nodes[position].distanceVector = distanceVector;
     nodeList.nodes[position].distanceVectorLen = i;
+    nodeList.nodes[position].active = true;
+    nodeList.nodes[position].timestamp = clock();
   }
 }
 
@@ -528,7 +534,8 @@ void readFile(){
       strcpy(nodeList.nodes[position].IP, IP);
       nodeList.nodes[position].port = port;
       nodeList.nodes[position].nextNodes = NULL; // OLD CODE
-      //printf("id: %d  %s:%d", nodeList.nodes[position].id, nodeList.nodes[position].IP, nodeList.nodes[position].port);
+      nodeList.nodes[position].active = false;
+      //printf("id: %d  %s:%d", nodeList.nodes[position].id, nodeList.nodes[position].IP, nodeList.nodes[position].port); // TEST
     }
   }
 
