@@ -1,3 +1,10 @@
+/* notes:
+FIX IT
+OLD CODE
+TEST
+TO DO
+*/
+
 #include <stdio.h>        //printf
 #include <string.h>       //memset
 #include <stdlib.h>       //exit(0);
@@ -25,6 +32,7 @@ typedef struct{
   int port;
   int *nextNodes; // OLD CODE
   DistanceNode *distanceVector;
+  int distanceVectorLen;
   //timestamp
 }Node;
 
@@ -54,16 +62,74 @@ void die(char *s){
   exit(1);
 }
 
-int getPort(Message *msg){
+int getPort(Message *msg){ // OLD CODE
   int port = -1;
   for(int i = 0; i!=nodeList.len; i++){
     if(nodeList.nodes[i].id == newNode.nextNodes[msg->destId])
       port = nodeList.nodes[i].port;
   }
+
   if(port == -1)
     printf("\n\t~ id NOT found :( ~\n");
   
   return port;
+}
+
+int getDistance(int id){
+  int distance = -1;
+
+  for(int i=0; i<nodeList.len; i++){
+    if(id == newNode.distanceVector[i].node)
+      return newNode.distanceVector[i].distance;
+  }
+}
+
+// Bellman-Ford section:
+// get destination position in the nodeList
+// then we can get ports and IPs
+int getDestinationPosition(int distance, int destId){
+  int position = 0;
+
+  // check all neighbours
+  for( ; position<nodeList.len; position++){
+    if(nodeList.nodes[position].id == destId){
+      // find newNode position in neighbour's distance vector
+      int newNodepos = 0;
+      for( ; newNodepos < nodeList.nodes[position].distanceVectorLen; newNodepos++){
+        if(newNode.id == nodeList.nodes[position].distanceVector[newNodepos].node)
+          break;
+      }
+
+      // check distance of newNode to neighbour
+      if(distance == nodeList.nodes[position].distanceVector[newNodepos].distance)
+        return position;
+
+    }else{
+      int i = 0;
+      bool foundDestination = false;
+      // find position of destination node in neighbour's distance vetor
+      for( ; i < nodeList.nodes[position].distanceVectorLen; i++){
+        if(destId == nodeList.nodes[position].distanceVector[i].node){
+          foundDestination = true;
+          break;
+        }
+        // if i = nodeList.nodes[position].distanceVectorLen-1: destination not found
+      }
+
+      if(!foundDestination)
+        continue;
+
+      // neighbour's distance vector
+      int nbDistanceVector = nodeList.nodes[position].id;
+      // distance of neighbour to destination
+      int compareDistance = nodeList.nodes[position].distanceVector[i].distance;
+      // distance of newNode to neighbour
+      int distanceToNb = getDistance(nbDistanceVector);
+
+      if(compareDistance+distanceToNb == distance)
+        return position;
+    }
+  }
 }
 
 void waitingSendVector(clock_t clock1){
@@ -132,6 +198,8 @@ void *socketSendVector(){
         // Clear the buffer by filling null, it might have received data
         memset(buffer, '\0', sizeof(Message));
       }
+
+      vectorUpdated = false;
     }
   }
 
@@ -155,15 +223,22 @@ void *socketSend(void *data){
     printf("\nSend a message to id: ");
     scanf("%d", &msg->destId);
 
-    // Search port
-    if( (port = getPort(msg)) == -1)
-      continue;
+    // destination position in nodeList
+    // if destination node is not a neighbour, the function returns the next node
+    int positionNodeList = getDestinationPosition(getDistance(msg->destId), msg->destId);
     
-    // Search IP
+    port = nodeList.nodes[positionNodeList].port;
+    strcpy(IP, nodeList.nodes[positionNodeList].IP);
+
+    /*// Search port OLD CODE
+    if( (port = getPort(msg)) == -1)
+      continue;*/
+    
+    /*// Search IP  OLD CODE
     for(int i = 0; i!=nodeList.len; i++){
       if(nodeList.nodes[i].id == newNode.nextNodes[msg->destId])
         strcpy(IP, nodeList.nodes[i].IP);
-    }
+    }*/
     
     // Define/Create UDP socket
     if( (s=socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP)) == -1 )
@@ -187,8 +262,8 @@ void *socketSend(void *data){
     msg->type = DataMsg;
 
     //msg->data = vectorToString();
-    //msg->type = DistanceMsg;// test
-    printf("~Message will be send to router %d. Destination: router %d\n", newNode.nextNodes[msg->destId], msg->destId);
+    //msg->type = DistanceMsg;// TEST
+    printf("~Message will be send to router %d. Destination: router %d\n", nodeList.nodes[positionNodeList].id, msg->destId);
 
     // Send the message
     if(sendto(s, msg, sizeof(Message), 0, (struct sockaddr *) &newSocket, socketLength) == -1)
@@ -247,21 +322,29 @@ void *socketReceive(void *data){
 
     // Check if the received message is for this node
     if(buffer->destId == newNode.id){
-
       if(buffer->type == DataMsg){
         printf("\n\n\t~ Received message %d ~", buffer->sourceId);
         printf("\n\tSource: %d\tId: %d", buffer->sourceId, buffer->id);
         printf("\n\tData: %s\n", buffer->data);
 
-      // Prepare the confirmation message
+        // Prepare the confirmation message
         buffer->destId = buffer->sourceId;
         buffer->sourceId = newNode.id;
         strcpy(buffer->data, "Message was received by router ");
         // It is a confirmation message now
         buffer->type = ConfirmationMsg;
 
-        if( (port = getPort(buffer)) == -1)
-          continue;
+        // destination position in nodeList
+        // if destination node is not a neighbour, the function returns the next node
+        int positionNodeList = getDestinationPosition(getDistance(buffer->destId), buffer->destId);
+        char IP[15];
+
+        port = nodeList.nodes[positionNodeList].port;
+        strcpy(IP, nodeList.nodes[positionNodeList].IP);
+
+        /*if( (port = getPort(buffer)) == -1) // OLD CODE
+          continue;*/
+
         otherSocket.sin_port = htons(port);
 
         // Send the confirmation message to the source
@@ -269,8 +352,10 @@ void *socketReceive(void *data){
           die("sendto()");
 
       }else if(buffer->type == DistanceMsg){
+        // Received a distance vector from a neighbour
         stringToVector(buffer->data);
-        //atualizar vetor aqui
+        
+        // TO DO: atualizar vetor aqui
         vectorUpdated = true;
 
       }else{
@@ -282,18 +367,26 @@ void *socketReceive(void *data){
     }else{
       int s, port = -1;
       char IP[15];
-      // Search port
-      if( (port = getPort(buffer)) == -1)
-        continue;
 
-      // Search IP
+      // destination position in nodeList
+      // if destination node is not a neighbour, the function returns the next node
+      int positionNodeList = getDestinationPosition(getDistance(buffer->destId), buffer->destId);
+      
+      port = nodeList.nodes[positionNodeList].port;
+      strcpy(IP, nodeList.nodes[positionNodeList].IP);
+
+      /*// Search port OLD CODE
+      if( (port = getPort(buffer)) == -1)
+        continue;*/
+
+      /*// Search IP OLD CODE
       for(int i = 0; i!=nodeList.len; i++){
         if(nodeList.nodes[i].id == newNode.nextNodes[buffer->destId])
           strcpy(IP, nodeList.nodes[i].IP);
-      }
+      }*/
 
-      printf("\n~ Redirecting message %d:%d for router %d", buffer->id, buffer->sourceId, newNode.nextNodes[buffer->destId]);
-      // Create a UDP socket
+      printf("\n~ Redirecting message: %d to router %d", buffer->sourceId, nodeList.nodes[positionNodeList].id);
+      // Create a UDP socketnewNode.nextNodes[buffer->destId]
       if ((s=socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP)) == -1)
           die("socket");
 
@@ -317,10 +410,11 @@ void *socketReceive(void *data){
 }
 
 void addDistanceVector(int target, int weight){
-  int len = nodeList.len;
+  int len = newNode.distanceVectorLen;
   newNode.distanceVector[len].node = target;
   newNode.distanceVector[len].distance = weight;
   nodeList.len++;
+  newNode.distanceVectorLen++;
 }
 
 void showDistanceVector() {
@@ -355,7 +449,7 @@ void stringToVector(char* string){
   char *item = malloc(strlen(string));
   char *stringCopy = malloc(strlen(string));
   int owner = -1, position = 0, node=0, distance=0;
-  int i=0;
+  int i = 0;
 
   strcpy(stringCopy, string);
 
@@ -391,12 +485,13 @@ void stringToVector(char* string){
     // insert distance vector into node distance vector
     nodeList.nodes[position].distanceVector = NULL;
     nodeList.nodes[position].distanceVector = distanceVector;
+    nodeList.nodes[position].distanceVectorLen = i;
   }
 }
 
 bool checkLink(int nodeId){
   for(int i=0; i<nodeList.len; i++){
-    if(nodeId == newNode.distanceVector[i].node)
+    if(nodeId == newNode.distanceVector[i].node && newNode.distanceVector[i].distance != 0)
       return true;
   }
   return false;
@@ -424,6 +519,7 @@ void readFile(){
     /*int i = nodeList.len++; OLD CODE */
   
     if(id == newNode.id){
+      // get newNode atributes
       strcpy(newNode.IP, IP);
       newNode.port = port;
 
@@ -452,6 +548,7 @@ void readLinksFile(){
   // initialize distance vector
   newNode.distanceVector = malloc(sizeof(DistanceNode)*MaxNumberNodes);
   nodeList.len = 0;
+  newNode.distanceVectorLen = 0;
 
   if(( file = fopen("enlaces.config", "r")) == NULL){
     printf("\n\t~ enlaces.config: File could not be opened :( ~\n");
