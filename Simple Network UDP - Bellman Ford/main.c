@@ -77,9 +77,7 @@ int getPort(Message *msg){ // OLD CODE
 }
 
 int getDistance(int id){
-  int distance = -1;
-
-  for(int i=0; i<nodeList.len; i++){
+  for(int i=0; i<newNode.distanceVectorLen; i++){ // alteração ok
     if(id == newNode.distanceVector[i].node)
       return newNode.distanceVector[i].distance;
   }
@@ -133,15 +131,6 @@ int getDestinationPosition(int distance, int destId){
   }
 }
 
-void waitingSendVector(clock_t clock1){
-  clock_t clock2;
-  while(!sendVectorTimeout){
-    clock2 = clock();
-    if( ( (clock2 - clock1)*1000/CLOCKS_PER_SEC ) >= Timeout ){
-      sendVectorTimeout = true;
-    }
-  }
-}
 
 void keepWaitingConfirmation(clock_t clock1){
   clock_t clock2;
@@ -154,6 +143,25 @@ void keepWaitingConfirmation(clock_t clock1){
   if(waitingConfirm == true)
     printf("\n\t~ TIMEOUT ~\n");
 }
+/*
+// received vector and neighbour id
+void updateVector(DistanceNode *receivedVector, int nbId){
+  int linkDistance = getDistance(nbId);
+  // percorre o recebido
+  for(int i=0; i < receivedVector.distanceVectorLen; i++){
+    if(receivedVector.distanceVector[i].node == newNode.id)
+      continue;
+
+    else if(receivedVector.distanceVector[i].distance == 0)
+      continue;
+
+    else{
+      
+    }
+    
+  }
+}*/
+
 
 void *socketSendVector(){
   int port = -1;
@@ -161,20 +169,26 @@ void *socketSendVector(){
   int s, len = nodeList.len, socketLength = sizeof(newSocket);
   char IP[15];
 
+  // create message
+  Message *msg = (Message *)malloc(sizeof(Message));
+  msg->sourceId = newNode.id;
+  msg->type = DistanceMsg;
+
+  clock_t clock2;
+
   while(1){
-    Message *buffer = (Message *)malloc(sizeof(Message));
-    Message *msg = (Message *)malloc(sizeof(Message));
-
-    // Get and prepare the distance vector
-    msg->sourceId = newNode.id;
-    msg->type = DistanceMsg;
-    strcpy(msg->data, vectorToString());
-
-    waitingSendVector(newNode.timestamp);
+    // handling timeout
+    clock2 = clock();
+    if( ( (clock2 - newNode.timestamp)*1000/CLOCKS_PER_SEC ) >= Timeout ){
+      sendVectorTimeout = true;
+    }
 
     // if newNode vector was updated, send again
     if( vectorUpdated || sendVectorTimeout ){
-      for(int i=0; i < len; i++){                                                  
+      printf("\n Sending distance vector");
+      strcpy(msg->data, vectorToString());
+
+      for(int i=0; i < len; i++){
         // Define/Create UDP socket
         if( (s=socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP)) == -1 )
           die("socket");
@@ -188,7 +202,6 @@ void *socketSendVector(){
         newSocket.sin_port = htons(port);
 
         if(inet_aton(IP, &newSocket.sin_addr) == 0){
-          printf("send vector");
           fprintf(stderr, "inet_aton() failed\n");
           exit(1);
         }
@@ -196,17 +209,18 @@ void *socketSendVector(){
         // Send the message
         if(sendto(s, msg, sizeof(Message), 0, (struct sockaddr *) &newSocket, socketLength) == -1)
           die("sendto()");
-
-        // Clear the buffer by filling null, it might have received data
-        memset(buffer, '\0', sizeof(Message));
       }
 
       newNode.timestamp = clock();
       sendVectorTimeout = false;
       vectorUpdated = false;
+
+      // Reset message
+      memset(msg, '\0', sizeof(Message));
     }
   }
 
+  free(msg);
   close(s);
 }
 
@@ -414,16 +428,14 @@ void *socketReceive(void *data){
 }
 
 void addDistanceVector(int target, int weight){
-  int len = newNode.distanceVectorLen;
-  newNode.distanceVector[len].node = target;
-  newNode.distanceVector[len].distance = weight;
-  nodeList.len++;
-  newNode.distanceVectorLen++;
+  int position = newNode.distanceVectorLen++;
+  newNode.distanceVector[position].node = target;
+  newNode.distanceVector[position].distance = weight;
 }
 
 void showDistanceVector() {
   printf("\t(Node, Distance) = [");
-  for(int i=0; i<nodeList.len; i++){
+  for(int i=0; i<newNode.distanceVectorLen; i++){
     printf(" ( %d, %d ) ", newNode.distanceVector[i].node, newNode.distanceVector[i].distance);
   }
   printf("]");
@@ -496,7 +508,7 @@ void stringToVector(char* string){
 }
 
 bool checkLink(int nodeId){
-  for(int i=0; i<nodeList.len; i++){
+  for(int i=0; i<newNode.distanceVectorLen; i++){
     if(nodeId == newNode.distanceVector[i].node && newNode.distanceVector[i].distance != 0)
       return true;
   }
@@ -515,15 +527,14 @@ void readFile(){
     exit(1);
   }
 
-  int id, port, position=0;
+  int id, port;
   char IP[15];
-  //nodeList.len = 0; OLD CODE
+  
+  nodeList.len = newNode.distanceVectorLen-1;
+  int position = 0;
 
   // Reading the file and saving nodes data.
   while(fscanf(file, "%d %d %s", &id, &port, IP) != EOF ){
-    
-    /*int i = nodeList.len++; OLD CODE */
-  
     if(id == newNode.id){
       // get newNode atributes
       strcpy(newNode.IP, IP);
@@ -533,8 +544,9 @@ void readFile(){
       nodeList.nodes[position].id = id;
       strcpy(nodeList.nodes[position].IP, IP);
       nodeList.nodes[position].port = port;
-      nodeList.nodes[position].nextNodes = NULL; // OLD CODE
+      //nodeList.nodes[position].nextNodes = NULL; // OLD CODE
       nodeList.nodes[position].active = false;
+      position++;
       //printf("id: %d  %s:%d", nodeList.nodes[position].id, nodeList.nodes[position].IP, nodeList.nodes[position].port); // TEST
     }
   }
@@ -550,11 +562,10 @@ void readFile(){
 
 void readLinksFile(){
   FILE *file;
-  newNode.nextNodes = malloc(sizeof(int)*MaxNumberNodes);
+  newNode.nextNodes = malloc(sizeof(int)*MaxNumberNodes); // OLD CODE
 
   // initialize distance vector
   newNode.distanceVector = malloc(sizeof(DistanceNode)*MaxNumberNodes);
-  nodeList.len = 0;
   newNode.distanceVectorLen = 0;
 
   if(( file = fopen("enlaces.config", "r")) == NULL){
@@ -569,7 +580,7 @@ void readLinksFile(){
   int source, dest, weight;
   //struct Graph* graph = createGraph(nodeList.len); OLD CODE
 
-  // Add yourself to distance vector
+  // Add itself to distance vector
   addDistanceVector(newNode.id, 0);
 
   // Reading file and adding edges to graph
@@ -592,6 +603,7 @@ void readLinksFile(){
   */
 
   showDistanceVector();
+  vectorUpdated = true;
 
   fclose(file);
 }
