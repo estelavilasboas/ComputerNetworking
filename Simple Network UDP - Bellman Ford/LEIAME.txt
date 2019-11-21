@@ -3,7 +3,7 @@
                    1611100054
               REDES DE COMPUTADORES
 
-TRABALHO 1
+TRABALHO 2
 
     COMPILAR:
         gcc main.c -lpthread

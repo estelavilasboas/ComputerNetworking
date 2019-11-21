@@ -13,8 +13,6 @@ TO DO
 #include <sys/socket.h>
 #include <stdbool.h>
 #include <time.h>         //time
-#include "dijkstra.c"
-#include "bellmanFord.c"
 
 #define MaxNumberNodes 10
 #define Timeout 10000
@@ -25,6 +23,11 @@ enum MessageType{
   DataMsg,
   DistanceMsg
 };
+
+typedef struct{
+  int node;
+  int distance;
+}DistanceNode;
 
 typedef struct{
   int id;
