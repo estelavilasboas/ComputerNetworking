@@ -17,7 +17,7 @@ TO DO
 #include "bellmanFord.c"
 
 #define MaxNumberNodes 10
-#define Timeout 1000
+#define Timeout 10000
 #define SendAfterTimeout 5
 
 enum MessageType{
@@ -56,7 +56,7 @@ bool waitingConfirm = false;
 bool vectorUpdated = false;
 bool sendVectorTimeout = false;
 char* vectorToString();
-void stringToVector(char *string);
+int stringToVector(char *string);
 
 void die(char *s){
   perror(s);
@@ -77,10 +77,33 @@ int getPort(Message *msg){ // OLD CODE
 }
 
 int getDistance(int id){
-  for(int i=0; i<newNode.distanceVectorLen; i++){ // alteração ok
+  for(int i=0; i<newNode.distanceVectorLen; i++){
     if(id == newNode.distanceVector[i].node)
       return newNode.distanceVector[i].distance;
   }
+}
+
+// get position in newNode's distance vector
+int getPositionDistVector(int id){
+  for(int i=0; i<newNode.distanceVectorLen; i++){
+    if(id == newNode.distanceVector[i].node)
+      return i;
+  }
+  return -1;
+}
+
+void addDistanceVector(int target, int weight){
+  int position = newNode.distanceVectorLen++;
+  newNode.distanceVector[position].node = target;
+  newNode.distanceVector[position].distance = weight;
+}
+
+void showDistanceVector() {
+  printf("\t(Node, Distance) = [");
+  for(int i=0; i<newNode.distanceVectorLen; i++){
+    printf(" ( %d, %d ) ", newNode.distanceVector[i].node, newNode.distanceVector[i].distance);
+  }
+  printf("]");
 }
 
 // Bellman-Ford result analysis section:
@@ -143,24 +166,47 @@ void keepWaitingConfirmation(clock_t clock1){
   if(waitingConfirm == true)
     printf("\n\t~ TIMEOUT ~\n");
 }
-/*
+
 // received vector and neighbour id
-void updateVector(DistanceNode *receivedVector, int nbId){
+void updateVector(int position, int nbId){
   int linkDistance = getDistance(nbId);
-  // percorre o recebido
-  for(int i=0; i < receivedVector.distanceVectorLen; i++){
-    if(receivedVector.distanceVector[i].node == newNode.id)
+  int receivedVectorLen = nodeList.nodes[position].distanceVectorLen;
+  DistanceNode *receivedVector = nodeList.nodes[position].distanceVector;
+  bool updated = false;
+
+  for(int i=0; i < receivedVectorLen; i++){
+    if(receivedVector[i].node == newNode.id)
       continue;
 
-    else if(receivedVector.distanceVector[i].distance == 0)
+    else if(receivedVector[i].distance == 0)
       continue;
 
     else{
-      
+      // find position in newNode's distance vector
+      int position = getPositionDistVector(receivedVector[i].node);
+
+      // newNode didn't knew a node 
+      if(position == -1){
+        newNode.distanceVector[newNode.distanceVectorLen].node = receivedVector[i].node;
+        newNode.distanceVector[newNode.distanceVectorLen].distance = receivedVector[i].distance + linkDistance;
+        newNode.distanceVectorLen++;
+        updated = true;
+        continue;
+      }
+
+      if( (receivedVector[i].distance + linkDistance) < (newNode.distanceVector[position].distance) ){
+        newNode.distanceVector[position].distance = receivedVector[i].distance + linkDistance;
+        updated = true;
+      }
     }
-    
   }
-}*/
+
+  if(updated){
+    vectorUpdated = true;
+    printf("\n\t~ Distance vetor updated ~\n");
+    showDistanceVector();
+  }
+}
 
 
 void *socketSendVector(){
@@ -373,11 +419,10 @@ void *socketReceive(void *data){
 
       }else if(buffer->type == DistanceMsg){
         // Received a distance vector from a neighbour
-        printf("\n%s\n", buffer->data);
-        stringToVector(buffer->data);
+        //printf("\n%s\n", buffer->data); // TEST
+        int position = stringToVector(buffer->data);
         
-        // TO DO: atualizar vetor aqui
-        //vectorUpdated = true;
+        updateVector(position, buffer->sourceId);
 
       }else{
         waitingConfirm = false;
@@ -430,20 +475,6 @@ void *socketReceive(void *data){
   close(s);
 }
 
-void addDistanceVector(int target, int weight){
-  int position = newNode.distanceVectorLen++;
-  newNode.distanceVector[position].node = target;
-  newNode.distanceVector[position].distance = weight;
-}
-
-void showDistanceVector() {
-  printf("\t(Node, Distance) = [");
-  for(int i=0; i<newNode.distanceVectorLen; i++){
-    printf(" ( %d, %d ) ", newNode.distanceVector[i].node, newNode.distanceVector[i].distance);
-  }
-  printf("]");
-}
-
 char* vectorToString(){
   char* string = malloc(sizeof(char)*(MaxNumberNodes*2));
   for(int i=0; i<newNode.distanceVectorLen; i++){
@@ -462,7 +493,7 @@ char* vectorToString(){
   return string;
 }
 
-void stringToVector(char* string){
+int stringToVector(char* string){
   DistanceNode *distanceVector = malloc(sizeof(DistanceNode)*MaxNumberNodes);
   char *item = malloc(strlen(string));
   char *stringCopy = malloc(strlen(string));
@@ -508,13 +539,17 @@ void stringToVector(char* string){
     nodeList.nodes[position].timestamp = clock();
     nodeList.nodes[position].distanceVectorLen = i;
 
+    /*
     printf("\n\t~ Received distance vetor from %d ~\n", nodeList.nodes[position].id);
     printf("\t(Node, Distance) = [");
     for(int j=0; j<nodeList.nodes[position].distanceVectorLen; j++){
       printf(" ( %d, %d ) ", nodeList.nodes[position].distanceVector[j].node, nodeList.nodes[position].distanceVector[j].distance);
     }
     printf("]");
+    */
   }
+
+  return position;
 }
 
 bool checkLink(int nodeId){
