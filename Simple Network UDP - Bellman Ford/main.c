@@ -206,7 +206,7 @@ void updateVector(int position, int nbId){
 
   if(updated){
     vectorUpdated = true;
-    printf("\n\t~ Distance vetor updated ~\n");
+    printf("\n\n\t~ Distance vector updated ~\n");
     showDistanceVector();
   }
 }
