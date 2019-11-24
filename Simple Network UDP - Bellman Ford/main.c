@@ -81,14 +81,12 @@ int getPort(Message *msg){ // OLD CODE
   return port;
 }
 
-void nodesTimeout(){
+void nodesTimeout(int i){
   clock_t clock1;
-  for(int i=0; i<nodeList.len; i++){
-    clock1 = clock();
-    if( ((clock1 - nodeList.nodes[i].timestamp)*1000/CLOCKS_PER_SEC) >= 3*Timeout ){
-      nodeList.nodes[i].active = false;
-      printf("\n\n~ Router %d is not active", nodeList.nodes[i].id);
-    }
+  clock1 = clock();
+  if( ((clock1 - nodeList.nodes[i].timestamp)*1000/CLOCKS_PER_SEC) >= 3*Timeout ){
+    nodeList.nodes[i].active = false;
+    //printf("\n\n~ Router %d is not active", nodeList.nodes[i].id);
   }
 }
 
@@ -147,6 +145,11 @@ int getDestinationPosition(int distance, int destId){
           break;
       }
 
+      // maybe neighbour's distance vector was never received
+      if(nodeList.nodes[position].active == false){
+        return -1;
+      }
+        
       // check distance of newNode to neighbour
       if(distance == nodeList.nodes[position].distanceVector[newNodepos].distance)
         return position;
@@ -247,17 +250,19 @@ void *socketSendVector(){
   while(1){
     // handling timeout
     clock2 = clock();
+    
     if( ( (clock2 - newNode.timestamp)*1000/CLOCKS_PER_SEC ) >= Timeout ){
       sendVectorTimeout = true;
     }
 
-    nodesTimeout();
     // if newNode vector was updated, send again
     if( vectorUpdated || sendVectorTimeout ){
       strcpy(msg->data, vectorToString());
       //printf("\n Sending distance vector: %s", msg->data);
 
       for(int i=0; i < len; i++){
+        nodesTimeout(i);
+
         msg->destId = nodeList.nodes[i].id;
         msg->type = DistanceMsg;
         msg->sourceId = newNode.id;
@@ -318,8 +323,8 @@ void *socketSend(void *data){
     // if destination node is not a neighbour, the function returns the next node
     int destPosition = getDestinationPosition(getDistance(msg->destId), msg->destId);
     
-    if(nodeList.nodes[destPosition].active == false)
-      printf("~ it's not possible reach router %d", msg->destId);
+    if(destPosition == -1)
+      printf("~ destination unreachable");
 
     else{
       port = nodeList.nodes[destPosition].port;
@@ -474,37 +479,42 @@ void *socketReceive(void *data){
       // if destination node is not a neighbour, the function returns the next node
       int positionNodeList = getDestinationPosition(getDistance(buffer->destId), buffer->destId);
       
-      port = nodeList.nodes[positionNodeList].port;
-      strcpy(IP, nodeList.nodes[positionNodeList].IP);
+      if(positionNodeList == -1)
+        printf("\n\n~ Cannot redirect message: destination unreachable");
 
-      /*// Search port OLD CODE
-      if( (port = getPort(buffer)) == -1)
-        continue;*/
+      else{
+        port = nodeList.nodes[positionNodeList].port;
+        strcpy(IP, nodeList.nodes[positionNodeList].IP);
 
-      /*// Search IP OLD CODE
-      for(int i = 0; i!=nodeList.len; i++){
-        if(nodeList.nodes[i].id == newNode.nextNodes[buffer->destId])
-          strcpy(IP, nodeList.nodes[i].IP);
-      }*/
+        /*// Search port OLD CODE
+        if( (port = getPort(buffer)) == -1)
+          continue;*/
 
-      printf("\n\n~ Redirecting message: %d to router %d", buffer->sourceId, nodeList.nodes[positionNodeList].id);
-      // Create a UDP socketnewNode.nextNodes[buffer->destId]
-      if ((s=socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP)) == -1)
-          die("socket");
+        /*// Search IP OLD CODE
+        for(int i = 0; i!=nodeList.len; i++){
+          if(nodeList.nodes[i].id == newNode.nextNodes[buffer->destId])
+            strcpy(IP, nodeList.nodes[i].IP);
+        }*/
 
-      memset((char *) &redirectSocket, 0, sizeof(redirectSocket));
-      redirectSocket.sin_family = AF_INET;
-      redirectSocket.sin_port = htons(port);
+        printf("\n\n~ Redirecting message: %d to router %d", buffer->sourceId, nodeList.nodes[positionNodeList].id);
+        // Create a UDP socketnewNode.nextNodes[buffer->destId]
+        if ((s=socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP)) == -1)
+            die("socket");
 
-      if(inet_aton(IP, &redirectSocket.sin_addr) == 0){
-        fprintf(stderr, "inet_aton() failed\n");
-        exit(1);
-      } 
+        memset((char *) &redirectSocket, 0, sizeof(redirectSocket));
+        redirectSocket.sin_family = AF_INET;
+        redirectSocket.sin_port = htons(port);
 
-      if(sendto(s, buffer, sizeof(Message), 0, (struct sockaddr*) &redirectSocket, socketLength) == -1)
-        die("sendto()");
+        if(inet_aton(IP, &redirectSocket.sin_addr) == 0){
+          fprintf(stderr, "inet_aton() failed\n");
+          exit(1);
+        } 
 
-      memset(buffer, '\0', sizeof(Message));
+        if(sendto(s, buffer, sizeof(Message), 0, (struct sockaddr*) &redirectSocket, socketLength) == -1)
+          die("sendto()");
+
+        memset(buffer, '\0', sizeof(Message));
+      }
     }
   }
 
