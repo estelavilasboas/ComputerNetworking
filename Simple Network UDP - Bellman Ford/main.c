@@ -3,6 +3,8 @@ FIX IT
 OLD CODE
 TEST
 TO DO
+desativar enlaces com base no timestamp
+printar nós desativados
 */
 
 #include <stdio.h>        //printf
@@ -15,7 +17,7 @@ TO DO
 #include <time.h>         //time
 
 #define MaxNumberNodes 10
-#define Timeout 10000
+#define Timeout 1000
 #define SendAfterTimeout 5
 
 enum MessageType{
@@ -79,6 +81,17 @@ int getPort(Message *msg){ // OLD CODE
   return port;
 }
 
+void nodesTimeout(){
+  clock_t clock1;
+  for(int i=0; i<nodeList.len; i++){
+    clock1 = clock();
+    if( ((clock1 - nodeList.nodes[i].timestamp)*1000/CLOCKS_PER_SEC) >= 3*Timeout ){
+      nodeList.nodes[i].active = false;
+      printf("\n\n~ Router %d is not active", nodeList.nodes[i].id);
+    }
+  }
+}
+
 int getDistance(int id){
   for(int i=0; i<newNode.distanceVectorLen; i++){
     if(id == newNode.distanceVector[i].node)
@@ -86,10 +99,19 @@ int getDistance(int id){
   }
 }
 
-// get position in newNode's distance vector
+// get node position in newNode's distance vector
 int getPositionDistVector(int id){
   for(int i=0; i<newNode.distanceVectorLen; i++){
     if(id == newNode.distanceVector[i].node)
+      return i;
+  }
+  return -1;
+}
+
+// get node position in nodeList
+int getPositionNodeList(int id){
+  for(int i=0; i<nodeList.len; i++){
+    if(id == nodeList.nodes[i].id)
       return i;
   }
   return -1;
@@ -171,10 +193,10 @@ void keepWaitingConfirmation(clock_t clock1){
 }
 
 // received vector and neighbour id
-void updateVector(int position, int nbId){
+void updateVector(int nbPosition, int nbId){
   int linkDistance = getDistance(nbId);
-  int receivedVectorLen = nodeList.nodes[position].distanceVectorLen;
-  DistanceNode *receivedVector = nodeList.nodes[position].distanceVector;
+  int receivedVectorLen = nodeList.nodes[nbPosition].distanceVectorLen;
+  DistanceNode *receivedVector = nodeList.nodes[nbPosition].distanceVector;
   bool updated = false;
 
   for(int i=0; i < receivedVectorLen; i++){
@@ -220,7 +242,6 @@ void *socketSendVector(){
 
   // create message
   Message *msg = (Message *)malloc(sizeof(Message));
-
   clock_t clock2;
 
   while(1){
@@ -230,6 +251,7 @@ void *socketSendVector(){
       sendVectorTimeout = true;
     }
 
+    nodesTimeout();
     // if newNode vector was updated, send again
     if( vectorUpdated || sendVectorTimeout ){
       strcpy(msg->data, vectorToString());
@@ -288,74 +310,79 @@ void *socketSend(void *data){
     Message *msg = (Message *)malloc(sizeof(Message));
     clock_t clock1;
 
-    // Get destination node
+    // set destination node
     printf("\nSend a message to id: ");
     scanf("%d", &msg->destId);
 
     // destination position in nodeList
     // if destination node is not a neighbour, the function returns the next node
-    int positionNodeList = getDestinationPosition(getDistance(msg->destId), msg->destId);
+    int destPosition = getDestinationPosition(getDistance(msg->destId), msg->destId);
     
-    port = nodeList.nodes[positionNodeList].port;
-    strcpy(IP, nodeList.nodes[positionNodeList].IP);
+    if(nodeList.nodes[destPosition].active == false)
+      printf("~ it's not possible reach router %d", msg->destId);
 
-    // Search port OLD CODE
-    //if( (port = getPort(msg)) == -1)
-    //  continue;
-    
-    // Search IP  OLD CODE
-    //for(int i = 0; i!=nodeList.len; i++){
-    //  if(nodeList.nodes[i].id == newNode.nextNodes[msg->destId])
-    //    strcpy(IP, nodeList.nodes[i].IP);
-    //}
-    
-    // Define/Create UDP socket
-    if( (s=socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP)) == -1 )
-      die("socket");
+    else{
+      port = nodeList.nodes[destPosition].port;
+      strcpy(IP, nodeList.nodes[destPosition].IP);
 
-    // Zero out the struture
-    memset((char *) &newSocket, 0, sizeof(newSocket));
-    newSocket.sin_family = AF_INET;
-    newSocket.sin_port = htons(port);
+      // Search port OLD CODE
+      //if( (port = getPort(msg)) == -1)
+      //  continue;
+      
+      // Search IP  OLD CODE
+      //for(int i = 0; i!=nodeList.len; i++){
+      //  if(nodeList.nodes[i].id == newNode.nextNodes[msg->destId])
+      //    strcpy(IP, nodeList.nodes[i].IP);
+      //}
+      
+      // Define/Create UDP socket
+      if( (s=socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP)) == -1 )
+        die("socket");
 
-    if(inet_aton(IP, &newSocket.sin_addr) == 0){
-      fprintf(stderr, "inet_aton() failed\n");
-      exit(1);
-    }
+      // Zero out the struture
+      memset((char *) &newSocket, 0, sizeof(newSocket));
+      newSocket.sin_family = AF_INET;
+      newSocket.sin_port = htons(port);
 
-    // Get and prepare the message
-    printf("Enter message : ");
-    scanf("%s", msg->data);
-    msg->sourceId = newNode.id;
-    msg->id = messageId;
-    msg->type = DataMsg;
-
-    //msg->data = vectorToString();
-    //msg->type = DistanceMsg;// TEST
-    printf("~Message will be send to router %d. Destination: router %d\n", nodeList.nodes[positionNodeList].id, msg->destId);
-
-    // Send the message
-    if(sendto(s, msg, sizeof(Message), 0, (struct sockaddr *) &newSocket, socketLength) == -1)
-      die("sendto()");
-
-    clock1 = clock();
-    waitingConfirm = true;
-
-    // Try to send the message again (timeout)
-    for(int i = 1; i <= SendAfterTimeout; i++){
-      // Check clock/timeout
-      keepWaitingConfirmation(clock1);
-      if(waitingConfirm){
-        printf("~Sending message again. %d(st/nd/rd/th) attempt", i+1);
-        if(sendto(s, msg, sizeof(Message), 0, (struct sockaddr *) &newSocket, socketLength) == -1)
-          die("sendto()");
+      if(inet_aton(IP, &newSocket.sin_addr) == 0){
+        fprintf(stderr, "inet_aton() failed\n");
+        exit(1);
       }
+
+      // Get and prepare the message
+      printf("Enter message : ");
+      scanf("%s", msg->data);
+      msg->sourceId = newNode.id;
+      msg->id = messageId;
+      msg->type = DataMsg;
+
+      //msg->data = vectorToString();
+      //msg->type = DistanceMsg;// TEST
+      printf("~Message will be send to router %d. Destination: router %d\n", nodeList.nodes[destPosition].id, msg->destId);
+
+      // Send the message
+      if(sendto(s, msg, sizeof(Message), 0, (struct sockaddr *) &newSocket, socketLength) == -1)
+        die("sendto()");
+
+      clock1 = clock();
+      waitingConfirm = true;
+
+      // Try to send the message again (timeout)
+      for(int i = 1; i <= SendAfterTimeout; i++){
+        // Check clock/timeout
+        keepWaitingConfirmation(clock1);
+        if(waitingConfirm){
+          printf("~Sending message again. %d(st/nd/rd/th) attempt", i+1);
+          if(sendto(s, msg, sizeof(Message), 0, (struct sockaddr *) &newSocket, socketLength) == -1)
+            die("sendto()");
+        }
+      }
+    
+      waitingConfirm = false;
+      // Clear the buffer by filling null, it might have received data
+      memset(buffer, '\0', sizeof(Message));
+      messageId++;
     }
-  
-    waitingConfirm = false;
-    // Clear the buffer by filling null, it might have received data
-    memset(buffer, '\0', sizeof(Message));
-    messageId++;
   }
 
   close(s);
@@ -423,9 +450,15 @@ void *socketReceive(void *data){
       }else if(buffer->type == DistanceMsg){
         // Received a distance vector from a neighbour
         //printf("\n%s\n", buffer->data); // TEST
+
+        // return position in newNode's distance vector 
         int position = stringToVector(buffer->data);
-        
+        // update newNode's distance vector
         updateVector(position, buffer->sourceId);
+
+        position = getPositionNodeList(buffer->sourceId);
+        nodeList.nodes[position].timestamp = clock();
+        nodeList.nodes[position].active = true;
 
       }else{
         waitingConfirm = false;
@@ -454,7 +487,7 @@ void *socketReceive(void *data){
           strcpy(IP, nodeList.nodes[i].IP);
       }*/
 
-      printf("\n~ Redirecting message: %d to router %d", buffer->sourceId, nodeList.nodes[positionNodeList].id);
+      printf("\n\n~ Redirecting message: %d to router %d", buffer->sourceId, nodeList.nodes[positionNodeList].id);
       // Create a UDP socketnewNode.nextNodes[buffer->destId]
       if ((s=socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP)) == -1)
           die("socket");
@@ -555,7 +588,7 @@ int stringToVector(char* string){
   return position;
 }
 
-bool checkLink(int nodeId){
+bool checkLink(int nodeId){ // é usado?
   for(int i=0; i<newNode.distanceVectorLen; i++){
     if(nodeId == newNode.distanceVector[i].node && newNode.distanceVector[i].distance != 0)
       return true;
