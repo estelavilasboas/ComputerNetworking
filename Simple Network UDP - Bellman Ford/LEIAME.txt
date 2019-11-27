@@ -13,8 +13,7 @@ TRABALHO 2
     é "Who am I?", o usuário deve digitar o id do roteador/
     nodo. Será feita a busca do IP e portas nos arquivos de
     configuração. Com a busca concluída, sera impresso no
-    terminal a tipologia, criada a partir do Algoritmo de
-    Dijkstra.
+    terminal o vetor distância.
         A partir disso, é possível escolher o nodo/roteador
     para o qual deseja enviar a mensagem digitando seu id
         
